@@ -1,25 +1,36 @@
 {
-  "name": "react-offscreen-webgl",
-  "version": "0.1.0",
-  "description": "This repo tracks the development of an easy to use offscreen canvas for WebGL shaders",
-  "exports": {
-    "import": "./dist/index.es.js",
-    "require": "./dist/index.cjs.js"
-  },
-  "type": "module",
-  "scripts": {
-    "build": "tsc && vite build",
-    "dev": "cd tests/vite && npm run dev",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "Tomás Pietravallo",
-  "license": "MIT",
-  "devDependencies": {
-    "@types/react": "^19.1.8",
-    "react": "^19.1.0",
-    "typescript": "^5.8.3",
-    "vite": "^7.0.0",
-    "vite-plugin-dts": "^4.5.4"
-  }
+	"name": "react-offscreen-webgl",
+	"version": "0.1.0",
+	"description": "This repo tracks the development of an easy to use offscreen canvas for WebGL shaders",
+	"exports": {
+		"import": "./dist/index.es.js",
+		"require": "./dist/index.cjs.js"
+	},
+	"type": "module",
+	"scripts": {
+		"build": "tsc && vite build",
+		"dev": "cd tests/vite && npm run dev",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"prepare": "husky"
+	},
+	"keywords": [],
+	"author": "Tomás Pietravallo",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/react": "^19.1.8",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.1.2",
+		"prettier": "^3.6.2",
+		"react": "^19.1.0",
+		"typescript": "^5.8.3",
+		"vite": "^7.0.0",
+		"vite-plugin-dts": "^4.5.4"
+	},
+	"lint-staged": {
+		"*.{js,jsx,ts,tsx,json,css,md}": [
+			"prettier --write"
+		]
+	}
 }
