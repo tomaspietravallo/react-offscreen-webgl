@@ -1,0 +1,9 @@
+# Node modules
+/node_modules
+
+# Dist build
+/dist
+
+# Miscellaneous
+.DS_Store
+.env

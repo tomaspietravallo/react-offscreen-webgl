@@ -1,0 +1,24 @@
+{
+  "name": "react-offscreen-webgl",
+  "version": "0.1.0",
+  "description": "This repo tracks the development of an easy to use offscreen canvas for WebGL shaders",
+  "exports": {
+    "import": "./dist/index.es.js",
+    "require": "./dist/index.cjs.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc && vite build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Tomás Pietravallo",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "react": "^19.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "vite-plugin-dts": "^4.5.4"
+  }
+}
