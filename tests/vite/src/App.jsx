@@ -7,7 +7,9 @@ function App() {
     <div className="App">
       <header className="App-header">
         <h1>Testing / Development environment</h1>
-        <OffscreenWebGL/>
+        <div style={{ width: '350px', height: '200px' }}>
+          <OffscreenWebGL/>
+        </div>
       </header>
     </div>
   )
