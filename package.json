@@ -9,6 +9,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc && vite build",
+    "dev": "cd tests/vite && npm run dev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
