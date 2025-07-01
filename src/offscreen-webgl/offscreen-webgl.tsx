@@ -1,10 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { DEFAULT_FS_SHADER, DEFAULT_VS_SHADER } from '../defaults';
-import {
-	createShaderFromSource,
-	createWholeScreenQuad,
-	setFloatUniforms,
-} from '../utils/webgl';
+import { createShaderFromSource, createWholeScreenQuad, setFloatUniforms } from '../utils/webgl';
 
 export default function OffscreenWebGL() {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -21,31 +17,17 @@ export default function OffscreenWebGL() {
 
 		const program = gl.createProgram();
 
-		const vsShader = createShaderFromSource(
-			gl,
-			gl.VERTEX_SHADER,
-			DEFAULT_VS_SHADER
-		);
+		const vsShader = createShaderFromSource(gl, gl.VERTEX_SHADER, DEFAULT_VS_SHADER);
 
 		if (vsShader.error) {
-			console.error(
-				'[OffscreenWebGL] Failed to compile Vertex Shader',
-				vsShader.error
-			);
+			console.error('[OffscreenWebGL] Failed to compile Vertex Shader', vsShader.error);
 			return;
 		}
 
-		const fsShader = createShaderFromSource(
-			gl,
-			gl.FRAGMENT_SHADER,
-			DEFAULT_FS_SHADER
-		);
+		const fsShader = createShaderFromSource(gl, gl.FRAGMENT_SHADER, DEFAULT_FS_SHADER);
 
 		if (fsShader.error) {
-			console.error(
-				'[OffscreenWebGL] Failed to compile Fragment Shader',
-				fsShader.error
-			);
+			console.error('[OffscreenWebGL] Failed to compile Fragment Shader', fsShader.error);
 			return;
 		}
 
@@ -56,25 +38,12 @@ export default function OffscreenWebGL() {
 		gl.useProgram(program);
 		createWholeScreenQuad(gl, program);
 
-		setFloatUniforms(
-			gl,
-			gl.getUniformLocation(
-				program,
-				'u_resolution'
-			) as WebGLUniformLocation,
-			canvas.width,
-			canvas.height
-		);
+		setFloatUniforms(gl, gl.getUniformLocation(program, 'u_resolution') as WebGLUniformLocation, canvas.width, canvas.height);
 
 		gl.viewport(0, 0, canvas.width, canvas.height);
 
 		gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 	}, []);
 
-	return (
-		<canvas
-			ref={canvasRef}
-			style={{ width: '100%', height: '100%' }}
-		></canvas>
-	);
+	return <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}></canvas>;
 }

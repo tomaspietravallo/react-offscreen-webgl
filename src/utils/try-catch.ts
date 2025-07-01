@@ -24,9 +24,7 @@ export const err = <E = Error>(error: E): Failure<E> => ({
 });
 
 // Main wrapper function
-export async function tryCatch<T, E = Error>(
-	promise: Promise<T>
-): Promise<Result<T, E>> {
+export async function tryCatch<T, E = Error>(promise: Promise<T>): Promise<Result<T, E>> {
 	try {
 		const data = await promise;
 		return { data, error: null };

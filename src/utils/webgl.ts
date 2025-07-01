@@ -1,10 +1,6 @@
 import { err, ok, Result } from './try-catch';
 
-export const createShaderFromSource = (
-	gl: WebGLRenderingContext,
-	type: number,
-	source: string
-): Result<WebGLShader> => {
+export const createShaderFromSource = (gl: WebGLRenderingContext, type: number, source: string): Result<WebGLShader> => {
 	const shader = gl.createShader(type);
 	if (!shader) return err(new Error('Failed to create shader'));
 
@@ -20,15 +16,16 @@ export const createShaderFromSource = (
 	return ok(shader);
 };
 
-export const createWholeScreenQuad = (
-	gl: WebGLRenderingContext,
-	program: WebGLProgram
-) => {
+export const createWholeScreenQuad = (gl: WebGLRenderingContext, program: WebGLProgram) => {
 	// Vertex **Attributes**
 	var vertexPositionAttribute = gl.getAttribLocation(program, 'v_position');
 	var quad_vertex_buffer = gl.createBuffer();
+	// prettier-ignore
 	var quad_vertex_buffer_data = new Float32Array([
-		-1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, -1.0, 0.0, -1.0, -1.0, 0.0,
+		-1.0, 1.0, 0.0,
+		1.0, 1.0, 0.0,
+		1.0, -1.0, 0.0,
+		-1.0, -1.0, 0.0
 	]);
 
 	gl.bindBuffer(gl.ARRAY_BUFFER, quad_vertex_buffer);
@@ -38,16 +35,10 @@ export const createWholeScreenQuad = (
 	return quad_vertex_buffer as WebGLBuffer;
 };
 
-export const setFloatUniforms = (
-	gl: WebGLRenderingContext,
-	location: WebGLUniformLocation,
-	...data: number[]
-) => {
+export const setFloatUniforms = (gl: WebGLRenderingContext, location: WebGLUniformLocation, ...data: number[]) => {
 	switch (data.length) {
 		case 0:
-			throw new Error(
-				'Invalid call to setFloatUniforms. No data provided'
-			);
+			throw new Error('Invalid call to setFloatUniforms. No data provided');
 		case 1:
 			// @ts-ignore
 			gl.uniform1f(location, ...data);
