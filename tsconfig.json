@@ -17,6 +17,6 @@
 		"noFallthroughCasesInSwitch": true,
 		"declaration": true
 	},
-	"include": ["components"],
-	"exclude": ["src/**/__docs__", "src/**/__test__"]
+	"include": ["src"],
+	"exclude": ["docs", "tests"]
 }

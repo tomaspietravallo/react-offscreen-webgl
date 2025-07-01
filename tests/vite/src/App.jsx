@@ -1,6 +1,6 @@
 import React from 'react';
 import './App.css';
-import { OffscreenWebGL } from '../../../components/index';
+import { OffscreenWebGL } from '../../../src/index';
 
 function App() {
 	return (
