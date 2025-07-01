@@ -2,33 +2,29 @@ import { err, ok, Result } from '../utils/try-catch';
 import { createShaderFromSource, createWholeScreenQuad, setFloatUniforms } from '../utils/webgl';
 import { WorkerMessages } from './webgl.worker';
 
-import WebWorker from '../offscreen-webgl/webgl.worker?worker';
-
 export type WebGLUniformName = `u_${string}`;
 
 export class WebGLManager {
 	public isReady: boolean = false;
 	private canvas: HTMLCanvasElement | OffscreenCanvas;
-	private gl: WebGLRenderingContext | null;
+	private gl: WebGLRenderingContext;
 	private program: WebGLProgram | null = null;
 	private vertexShader: WebGLShader | null = null;
 	private fragmentShaders: WebGLShader[] | null = null;
 	private uniforms: Record<WebGLUniformName, WebGLUniformLocation | null> = {};
 	private worker: Worker | null = null;
 
-	private constructor(props: { canvas: HTMLCanvasElement | OffscreenCanvas; useWorker?: boolean }) {
+	private constructor(props: { canvas: HTMLCanvasElement | OffscreenCanvas }) {
 		this.canvas = props.canvas;
-		this.gl = props.useWorker ? null : this.canvas.getContext('webgl')!;
+		this.gl = this.canvas.getContext('webgl')! as WebGLRenderingContext;
 
-		if (!this.gl && !props.useWorker) {
+		if (!this.gl) {
 			throw new Error('[OffscreenCanvas @ GLManager] WebGL not supported');
 		}
 
-		if (this.gl) {
-			this.program = this.gl.createProgram();
-			if (!this.program) {
-				throw new Error('[OffscreenCanvas @ GLManager] Failed to create WebGL program');
-			}
+		this.program = this.gl.createProgram();
+		if (!this.program) {
+			throw new Error('[OffscreenCanvas @ GLManager] Failed to create WebGL program');
 		}
 	}
 
@@ -43,7 +39,7 @@ export class WebGLManager {
 
 	static fromOffscreenCanvas(canvas: OffscreenCanvas): Result<WebGLManager> {
 		try {
-			return ok(new WebGLManager({ canvas, useWorker: true }));
+			return ok(new WebGLManager({ canvas }));
 		} catch (e) {
 			console.error('[OffscreenCanvas @ GLManager] Error creating GLManager from OffscreenCanvas', e);
 			return err(e as Error);
@@ -189,27 +185,5 @@ export class WebGLManager {
 		} else {
 			return err(new Error(`[OffscreenCanvas @ GLManager] WebGL error: ${e}`));
 		}
-	}
-
-	public initWebWorker(): Result<WebGLManager> {
-		this.worker = new WebWorker();
-
-		if (!this.worker) {
-			return err(new Error('[OffscreenCanvas @ GLManager] Failed to create Web Worker'));
-		}
-
-		this.worker.postMessage(
-			{
-				type: 'INIT',
-				vertexShader: this.vertexShader,
-				fragmentShaders: this.fragmentShaders,
-				uniforms: [],
-				canvas: this.canvas,
-			} as WorkerMessages & { type: 'INIT' },
-			{
-				transfer: [this.canvas],
-			}
-		);
-		return ok(this);
 	}
 }
