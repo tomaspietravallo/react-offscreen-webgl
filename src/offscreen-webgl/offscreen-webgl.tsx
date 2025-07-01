@@ -13,8 +13,8 @@ interface OffscreenWebGLProps {
 export default function OffscreenWebGL(props: OffscreenWebGLProps) {
 	const { vertexShader = DEFAULT_VS_SHADER, fragmentShader = DEFAULT_FS_SHADER } = props;
 
+	const CANVAS_ID = useRef(`OffscreenWebGLCanvas-${uuidv4()}`);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
-	const canvasID = useRef(`OffscreenWebGL-${uuidv4()}`);
 	const manager = useRef<WebGLManager | null>(null);
 
 	const uDeps = useMemo(
@@ -34,7 +34,7 @@ export default function OffscreenWebGL(props: OffscreenWebGLProps) {
 			return;
 		}
 
-		const m = WebGLManager.fromHTMLCanvasElement(canvas);
+		const m = WebGLManager.fromOffscreenCanvas(canvas.transferControlToOffscreen());
 
 		if (m.error) {
 			console.error('[OffscreenWebGL] Error creating GLManager:', m.error);
@@ -43,25 +43,7 @@ export default function OffscreenWebGL(props: OffscreenWebGLProps) {
 
 		manager.current = m.data;
 
-		if (manager.current.compileProgram(vertexShader, [fragmentShader]).error) {
-			console.error(
-				'[OffscreenWebGL] Error compiling shaders:',
-				manager.current.compileProgram(vertexShader, [fragmentShader]).error
-			);
-			return;
-		}
-
-		if (manager.current?.useProgram().error) {
-			console.error('[OffscreenWebGL] Error using program:', manager.current.useProgram().error);
-			return;
-		}
-
-		if (manager.current?.setupWholeScreenQuad().error) {
-			console.error('[OffscreenWebGL] Error setting up whole screen quad:', manager.current.setupWholeScreenQuad().error);
-			return;
-		}
-
-		manager?.current?.updateUniform('u_resolution', [canvas.width, canvas.height]);
+		manager.current.initWebWorker();
 
 		return () => {
 			// manager.current?.destroy();
@@ -69,20 +51,19 @@ export default function OffscreenWebGL(props: OffscreenWebGLProps) {
 	}, []);
 
 	useEffect(() => {
-		if (!manager.current || !manager.current.isReady) {
-			console.warn('[OffscreenWebGL] WebGLManager is not ready yet');
-			return;
-		}
-
-		for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('u_'))) {
-			manager.current?.updateUniform(key as WebGLUniformName, value);
-		}
-		if (manager.current?.checkWebGLVitals().error) {
-			console.error('[OffscreenWebGL] WebGL error:', manager.current.checkWebGLVitals().error);
-			return;
-		}
-		manager.current?.paintCanvas();
+		// if (!manager.current || !manager.current.isReady) {
+		// 	console.warn('[OffscreenWebGL] WebGLManager is not ready yet');
+		// 	return;
+		// }
+		// for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('u_'))) {
+		// 	manager.current?.updateUniform(key as WebGLUniformName, value);
+		// }
+		// if (manager.current?.checkWebGLVitals().error) {
+		// 	console.error('[OffscreenWebGL] WebGL error:', manager.current.checkWebGLVitals().error);
+		// 	return;
+		// }
+		// manager.current?.paintCanvas();
 	}, uDeps);
 
-	return <canvas id={canvasID.current} ref={canvasRef} style={{ width: '100%', height: '100%' }}></canvas>;
+	return <canvas id={CANVAS_ID.current} ref={canvasRef} style={{ width: '100%', height: '100%' }}></canvas>;
 }

@@ -2,7 +2,7 @@
 	"compilerOptions": {
 		"target": "ES5",
 		"useDefineForClassFields": true,
-		"lib": ["ES2020", "DOM", "DOM.Iterable"],
+		"lib": ["ES2020", "DOM", "DOM.Iterable", "WebWorker"],
 		"module": "ESNext",
 		"skipLibCheck": true,
 		"moduleResolution": "bundler",
@@ -15,7 +15,9 @@
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"noFallthroughCasesInSwitch": true,
-		"declaration": true
+		"declaration": true,
+		"types": ["vite/client"],
+		"typeRoots": ["./node_modules", "./node_modules/@types/", "./types"]
 	},
 	"include": ["src"],
 	"exclude": ["docs", "tests"]
