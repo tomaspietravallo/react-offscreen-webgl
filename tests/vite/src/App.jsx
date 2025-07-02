@@ -3,15 +3,9 @@ import { OffscreenWebGL } from '../../../src/index';
 import { useState } from 'react';
 
 function OffscreenWebGLContainer(props) {
-	const [frame, setFrame] = useState(0);
-
-	requestAnimationFrame(() => {
-		setFrame((prev) => prev + 1);
-	});
-
 	return (
 		<div style={{ padding: '20px' }}>
-			<OffscreenWebGL u_resolution={[frame, frame]} />
+			<OffscreenWebGL />
 		</div>
 	);
 }

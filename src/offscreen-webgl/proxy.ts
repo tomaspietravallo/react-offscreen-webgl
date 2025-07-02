@@ -11,7 +11,7 @@ export class WebGLManagerProxy {
 		this.worker.onmessage = this.handleMessage.bind(this);
 	}
 
-	private handleMessage(event: MessageEvent) {
+	private handleMessage(event: MessageEvent<WorkerMessages>) {
 		const { data } = event;
 		if (data.type === WorkerMessageType.RESPONSE) {
 			const { id, result, error } = data;
@@ -28,6 +28,19 @@ export class WebGLManagerProxy {
 	): Promise<ReturnType<WebGLManager[ManagerMethod] extends (...args: any) => any ? WebGLManager[ManagerMethod] : never>> {
 		const id = uuidv4();
 		this.worker.postMessage({ type: WorkerMessageType.CALL_METHOD, method, args, id } as WorkerMessages);
+		return new Promise((resolve) => {
+			this.pendingResponses[id] = resolve;
+		});
+	}
+
+	public run(fn: (manager: WebGLManager) => void, onEachFrame: boolean = false) {
+		const id = uuidv4();
+		this.worker.postMessage({
+			type: WorkerMessageType.EVAL_FN,
+			fn: fn.toString(),
+			onEachFrame,
+			id,
+		} as WorkerMessages);
 		return new Promise((resolve) => {
 			this.pendingResponses[id] = resolve;
 		});

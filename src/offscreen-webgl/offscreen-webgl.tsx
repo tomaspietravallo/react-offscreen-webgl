@@ -77,12 +77,12 @@ export default function OffscreenWebGL(props: OffscreenWebGLProps) {
 				})
 				.catch(console.error);
 
-			await proxyRef.current
-				?.callMethod('updateUniform', 'u_resolution', [canvas.width, canvas.height])
-				.then(() => {
-					console.log('[OffscreenWebGL] Updated resolution uniform');
-				})
-				.catch(console.error);
+			// await proxyRef.current
+			// 	?.callMethod('updateUniform', 'u_resolution', [canvas.width, canvas.height])
+			// 	.then(() => {
+			// 		console.log('[OffscreenWebGL] Updated resolution uniform');
+			// 	})
+			// 	.catch(console.error);
 
 			await proxyRef.current
 				?.callMethod('paintCanvas')
@@ -91,6 +91,17 @@ export default function OffscreenWebGL(props: OffscreenWebGLProps) {
 					resolve(true);
 				})
 				.catch(console.error);
+
+			await proxyRef.current?.run((manager) => {
+				if (manager) {
+					if (!manager.x) {
+						manager.x = 1;
+					}
+					manager.x++;
+					manager.updateUniform('u_resolution', [manager.x, manager.x]);
+					manager.paintCanvas();
+				}
+			}, true);
 		}).catch(console.error);
 
 		return () => {};

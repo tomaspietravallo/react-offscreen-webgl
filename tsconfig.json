@@ -16,9 +16,9 @@
 		"noUnusedParameters": true,
 		"noFallthroughCasesInSwitch": true,
 		"declaration": true,
-		"types": ["vite/client"],
+		"types": ["vite/client", "./src/offscreen-webgl/worker"],
 		"typeRoots": ["./node_modules", "./node_modules/@types/", "./types"]
 	},
-	"include": ["src"],
+	"include": ["src", "src/**/*.d.ts"],
 	"exclude": ["docs", "tests"]
 }

@@ -186,4 +186,18 @@ export class WebGLManager {
 			return err(new Error(`[OffscreenCanvas @ GLManager] WebGL error: ${e}`));
 		}
 	}
+
+	public getGLContext(): WebGLRenderingContext {
+		if (!this.gl) {
+			throw new Error('[OffscreenCanvas @ GLManager] WebGL context not available');
+		}
+		return this.gl;
+	}
+
+	public getProgram(): WebGLProgram {
+		if (!this.program) {
+			throw new Error('[OffscreenCanvas @ GLManager] WebGL program not available');
+		}
+		return this.program;
+	}
 }
