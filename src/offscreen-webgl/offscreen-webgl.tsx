@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { DEFAULT_FS_SHADER, DEFAULT_VS_SHADER } from '../defaults';
 import { WebGLManager, WebGLUniformName } from './gl-manager';
 import { uuidv4 } from '../utils/uuid';
-import { WebGLManagerProxy } from './proxy';
+import { WebGLManagerProxy, WebGLManagerProxyType } from './proxy';
 
 import WebWorker from '../offscreen-webgl/webgl.worker?worker';
 import { WorkerMessages } from './webgl.worker';
@@ -19,7 +19,7 @@ export default function OffscreenWebGL(props: OffscreenWebGLProps) {
 
 	const CANVAS_ID = useRef(`OffscreenWebGLCanvas-${uuidv4()}`);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
-	const proxyRef = useRef<WebGLManagerProxy | null>(null);
+	const proxyRef = useRef<WebGLManagerProxyType | null>(null);
 	const workerRef = useRef<Worker | null>(null);
 
 	const uDeps = useMemo(
@@ -56,77 +56,43 @@ export default function OffscreenWebGL(props: OffscreenWebGLProps) {
 		);
 
 		new Promise(async (resolve) => {
-			await proxyRef.current
-				?.callMethod('compileProgram', vertexShader, [fragmentShader])
-				.then(() => {
-					console.log('[OffscreenWebGL] Compiled WebGL program');
-				})
-				.catch(console.error);
+			await proxyRef.current?.compileProgram(vertexShader, [fragmentShader]);
 
-			await proxyRef.current
-				?.callMethod('useProgram')
-				.then(() => {
-					console.log('[OffscreenWebGL] Used WebGL program');
-				})
-				.catch(console.error);
+			await proxyRef.current?.useProgram();
 
-			await proxyRef.current
-				?.callMethod('setupWholeScreenQuad')
-				.then(() => {
-					console.log('[OffscreenWebGL] Set up whole screen quad');
-				})
-				.catch(console.error);
+			await proxyRef.current?.setupWholeScreenQuad();
 
-			// await proxyRef.current
-			// 	?.callMethod('updateUniform', 'u_resolution', [canvas.width, canvas.height])
-			// 	.then(() => {
-			// 		console.log('[OffscreenWebGL] Updated resolution uniform');
-			// 	})
-			// 	.catch(console.error);
+			await proxyRef.current?.paintCanvas();
 
-			await proxyRef.current
-				?.callMethod('paintCanvas')
-				.then(() => {
-					console.log('[OffscreenWebGL] Painted canvas');
-					resolve(true);
-				})
-				.catch(console.error);
-
-			await proxyRef.current?.run((manager) => {
-				if (manager) {
-					if (!manager.x) {
-						manager.x = 1;
-					}
-					manager.x++;
-					manager.updateUniform('u_resolution', [manager.x, manager.x]);
-					manager.paintCanvas();
-				}
+			await proxyRef.current?.runArbitraryOnWorkerContext((manager, frame, timeEllapsed) => {
+				manager.updateUniform('u_resolution', [frame, frame]);
+				manager.paintCanvas();
 			}, true);
 		}).catch(console.error);
 
 		return () => {};
 	}, []);
 
-	useEffect(() => {
-		new Promise(async (resolve) => {
-			if (!proxyRef.current || (await proxyRef.current.callMethod('checkWebGLVitals')).error) {
-				console.warn('[OffscreenWebGL] WebGLManager is not ready yet');
-				return;
-			}
+	// useEffect(() => {
+	// 	new Promise(async (resolve) => {
+	// 		if (!proxyRef.current || (await proxyRef.current.callMethodAsync('checkWebGLVitals')).error) {
+	// 			console.warn('[OffscreenWebGL] WebGLManager is not ready yet');
+	// 			return;
+	// 		}
 
-			for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('u_'))) {
-				await proxyRef.current?.callMethod('updateUniform', key as WebGLUniformName, value);
-			}
+	// 		for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('u_'))) {
+	// 			await proxyRef.current?.callMethodAsync('updateUniform', key as WebGLUniformName, value);
+	// 		}
 
-			let e: Error | null = null;
-			if ((e = (await proxyRef.current.callMethod('checkWebGLVitals')).error)) {
-				console.error('[OffscreenWebGL] WebGL error:', e);
-				return;
-			}
+	// 		let e: Error | null = null;
+	// 		if ((e = (await proxyRef.current.callMethodAsync('checkWebGLVitals')).error)) {
+	// 			console.error('[OffscreenWebGL] WebGL error:', e);
+	// 			return;
+	// 		}
 
-			await proxyRef.current.callMethod('paintCanvas');
-		}).catch(console.error);
-	}, uDeps);
+	// 		await proxyRef.current.callMethodAsync('paintCanvas');
+	// 	}).catch(console.error);
+	// }, uDeps);
 
 	return <canvas id={CANVAS_ID.current} ref={canvasRef} style={{ width: '100%', height: '100%' }}></canvas>;
 }

@@ -21,38 +21,44 @@ export type WorkerMessages =
 			fragmentShader: string[];
 			uniforms: Record<string, number | number[]>;
 			canvas: OffscreenCanvas;
+			async?: boolean;
 	  }
-	| { type: WorkerMessageType.PAUSE }
-	| { type: WorkerMessageType.RESUME }
-	| { type: WorkerMessageType.ERROR; error: string }
-	| { type: WorkerMessageType.CALL_METHOD; id: string; method: keyof WebGLManager; args: any[] }
+	| { type: WorkerMessageType.PAUSE; async?: boolean }
+	| { type: WorkerMessageType.RESUME; async?: boolean }
+	| { type: WorkerMessageType.ERROR; error: string; async?: boolean }
+	| { type: WorkerMessageType.CALL_METHOD; id: string; method: keyof WebGLManager; args: any[]; async?: boolean }
 	| { type: WorkerMessageType.RESPONSE; id: string; result: any; error?: string }
-	| { type: WorkerMessageType.EVAL_FN; id: string; fn: string; onEachFrame?: boolean };
+	| { type: WorkerMessageType.EVAL_FN; id: string; fn: string; onEachFrame?: boolean; async?: boolean };
 
 let glManager: WebGLManager | null = null;
 let frame: number = 0;
 let timeEllapsed: number = 0;
 
 const RAF = (callback: (manager: WebGLManager, frame: number, timeEllapsed: number) => any) => {
-	let useRAF = typeof requestAnimationFrame === 'function';
+	// let useRAF = typeof requestAnimationFrame === 'function';
 
 	// @todo: Allow for throttling (also for RAF)
-	const _ = () => {
-		if (useRAF) {
-			requestAnimationFrame((x) => {
-				callback(glManager!, frame, timeEllapsed);
-				_();
-			});
-		} else {
-			// 30 FPS fallback
-			setTimeout(() => {
-				callback(glManager!, frame, timeEllapsed);
-				_();
-			}, 1000 / 30);
-		}
-	};
+	// const _ = () => {
+	// if (useRAF) {
+	// 	requestAnimationFrame((x) => {
+	// 		callback(glManager!, frame, timeEllapsed);
+	// 		_();
+	// 	});
+	// } else {
+	// 30 FPS fallback
+	// setTimeout(() => {
+	// 	callback(glManager!, frame, timeEllapsed);
+	// 	_();
+	// }, 1000 / 30);
+	// }
+	setInterval(() => {
+		callback(glManager!, frame, timeEllapsed);
+		timeEllapsed += 1000 / 30;
+		frame++;
+	}, 1000 / 30);
+	// };
 
-	_();
+	// _();
 };
 
 addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
@@ -73,21 +79,21 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 			break;
 		}
 		case WorkerMessageType.CALL_METHOD: {
-			const { method, args, id } = data;
+			const { method, args, id, async } = data;
 			if (!glManager || !(method in glManager)) {
 				postMessage({ type: WorkerMessageType.RESPONSE, id, error: `Method ${method} not found` });
 				return;
 			}
 			try {
 				const result = await (glManager as any)[method](...args);
-				postMessage({ type: WorkerMessageType.RESPONSE, id, result: JSON.stringify(result) });
+				if (async) postMessage({ type: WorkerMessageType.RESPONSE, id, result: JSON.stringify(result) });
 			} catch (error) {
 				postMessage({ type: WorkerMessageType.RESPONSE, id, error: JSON.stringify(error) });
 			}
 			break;
 		}
 		case WorkerMessageType.EVAL_FN: {
-			const { fn, onEachFrame, id } = data;
+			const { fn, onEachFrame, id, async } = data;
 			if (!glManager) {
 				postMessage({ type: WorkerMessageType.RESPONSE, id, error: 'WebGLManager not initialized' });
 				return;
@@ -100,10 +106,10 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 				) => any;
 				if (onEachFrame) {
 					RAF(f);
-					postMessage({ type: WorkerMessageType.RESPONSE, id, result: ok('Setup RAF') });
+					if (async) postMessage({ type: WorkerMessageType.RESPONSE, id, result: ok('Setup RAF') });
 				} else {
 					const result = f(glManager, frame, timeEllapsed);
-					postMessage({ type: WorkerMessageType.RESPONSE, id, result: JSON.stringify(result) });
+					if (async) postMessage({ type: WorkerMessageType.RESPONSE, id, result: JSON.stringify(result) });
 				}
 			} catch (error) {
 				postMessage({ type: WorkerMessageType.RESPONSE, id, error: JSON.stringify(error) });

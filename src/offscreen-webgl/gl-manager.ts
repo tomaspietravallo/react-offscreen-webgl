@@ -14,7 +14,7 @@ export class WebGLManager {
 	private uniforms: Record<WebGLUniformName, WebGLUniformLocation | null> = {};
 	private worker: Worker | null = null;
 
-	private constructor(props: { canvas: HTMLCanvasElement | OffscreenCanvas }) {
+	public constructor(props: { canvas: HTMLCanvasElement | OffscreenCanvas }) {
 		this.canvas = props.canvas;
 		this.gl = this.canvas.getContext('webgl')! as WebGLRenderingContext;
 
