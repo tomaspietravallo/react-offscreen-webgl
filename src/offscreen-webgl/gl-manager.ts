@@ -4,18 +4,25 @@ import { WorkerMessages } from './webgl.worker';
 
 export type WebGLUniformName = `u_${string}`;
 
+export type RunOnWorkerContextFnName = `f_${string}`;
+
+export type RunOnWorkerContextFn<T = any> = (manager: WebGLManager, frame: number, timeEllapsed: number) => T;
+
 export class WebGLManager {
-	public isReady: boolean = false;
-	private canvas: HTMLCanvasElement | OffscreenCanvas;
+	public static readonly DEFAULT_FRAME_RATE = 30;
+	private frame: number = 0;
+	private timeEllapsed: number = 0;
+	private onEachFrameFunctions: Record<string, RunOnWorkerContextFn> = {};
+	private canvas: HTMLCanvasElement;
 	private gl: WebGLRenderingContext;
 	private program: WebGLProgram | null = null;
 	private vertexShader: WebGLShader | null = null;
 	private fragmentShaders: WebGLShader[] | null = null;
 	private uniforms: Record<WebGLUniformName, WebGLUniformLocation | null> = {};
-	private worker: Worker | null = null;
+	private interval: number | null = null;
 
-	public constructor(props: { canvas: HTMLCanvasElement | OffscreenCanvas }) {
-		this.canvas = props.canvas;
+	public constructor(canvas: HTMLCanvasElement) {
+		this.canvas = canvas;
 		this.gl = this.canvas.getContext('webgl')! as WebGLRenderingContext;
 
 		if (!this.gl) {
@@ -30,18 +37,9 @@ export class WebGLManager {
 
 	static fromHTMLCanvasElement(canvas: HTMLCanvasElement): Result<WebGLManager> {
 		try {
-			return ok(new WebGLManager({ canvas }));
+			return ok(new WebGLManager(canvas));
 		} catch (e) {
 			console.error('[OffscreenCanvas @ GLManager] Error creating GLManager from HTMLCanvasElement', e);
-			return err(e as Error);
-		}
-	}
-
-	static fromOffscreenCanvas(canvas: OffscreenCanvas): Result<WebGLManager> {
-		try {
-			return ok(new WebGLManager({ canvas }));
-		} catch (e) {
-			console.error('[OffscreenCanvas @ GLManager] Error creating GLManager from OffscreenCanvas', e);
 			return err(e as Error);
 		}
 	}
@@ -127,7 +125,9 @@ export class WebGLManager {
 		}
 
 		this.gl.useProgram(this.program);
-		this.isReady = true;
+
+		// this.setFrameRate(WebGLManager.DEFAULT_FRAME_RATE);
+
 		return ok(this);
 	}
 
@@ -199,5 +199,34 @@ export class WebGLManager {
 			throw new Error('[OffscreenCanvas @ GLManager] WebGL program not available');
 		}
 		return this.program;
+	}
+
+	public runOnContext(fn: RunOnWorkerContextFn, onEachFrame: boolean = false): any {
+		if (onEachFrame) {
+			this.onEachFrameFunctions[fn.name] = fn;
+		} else {
+			return fn(this, this.frame, this.timeEllapsed);
+		}
+		return;
+	}
+
+	public setFrameRate(frameRate: number): Result<WebGLManager> {
+		if (frameRate <= 0) {
+			return err(new Error('[OffscreenCanvas @ GLManager] Frame rate must be greater than 0'));
+		}
+		const interval = 1000 / frameRate;
+		if (this.interval) {
+			clearInterval(this.interval);
+		}
+		this.interval = setInterval(() => {
+			this.frame++;
+			this.timeEllapsed += interval;
+			let arr = Object.values(this.onEachFrameFunctions);
+
+			for (let i = 0; i < arr.length; i++) {
+				arr[i](this, this.frame, this.timeEllapsed);
+			}
+		}, interval);
+		return ok(this);
 	}
 }

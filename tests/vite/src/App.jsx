@@ -1,11 +1,16 @@
 import './App.css';
 import { OffscreenWebGL } from '../../../src/index';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 function OffscreenWebGLContainer(props) {
 	return (
 		<div style={{ padding: '20px' }}>
-			<OffscreenWebGL />
+			<OffscreenWebGL
+				f_each_paint={(manager, frame, time) => {
+					manager.updateUniform('u_resolution', [frame, frame]);
+					manager.paintCanvas();
+				}}
+			/>
 		</div>
 	);
 }
