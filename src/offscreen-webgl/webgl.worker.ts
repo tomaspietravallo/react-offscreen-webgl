@@ -96,10 +96,10 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 					return;
 				}
 				try {
-					const f = new Function('manager', 'frame', 'timeEllapsed', `return (${fn})(manager, frame, timeEllapsed);`) as (
+					const f = new Function('manager', 'frame', 'timeElapsed', `return (${fn})(manager, frame, timeElapsed);`) as (
 						manager: WebGLManager,
 						frame: number,
-						timeEllapsed: number
+						timeElapsed: number
 					) => any;
 					if (onEachFrame) {
 						glManagers[data.proxyId].runOnContext(f, true);

@@ -6,12 +6,12 @@ export type WebGLUniformName = `u_${string}`;
 
 export type RunOnWorkerContextFnName = `f_${string}`;
 
-export type RunOnWorkerContextFn<T = any> = (manager: WebGLManager, frame: number, timeEllapsed: number) => T;
+export type RunOnWorkerContextFn<T = any> = (manager: WebGLManager, frame: number, timeElapsed: number) => T;
 
 export class WebGLManager {
 	public static readonly DEFAULT_FRAME_RATE = 30;
 	private frame: number = 0;
-	private timeEllapsed: number = 0;
+	private timeElapsed: number = 0;
 	private onEachFrameFunctions: Record<string, RunOnWorkerContextFn> = {};
 	private canvas: HTMLCanvasElement;
 	private gl: WebGLRenderingContext;
@@ -205,7 +205,7 @@ export class WebGLManager {
 		if (onEachFrame) {
 			this.onEachFrameFunctions[fn.name] = fn;
 		} else {
-			return fn(this, this.frame, this.timeEllapsed);
+			return fn(this, this.frame, this.timeElapsed);
 		}
 		return;
 	}
@@ -220,11 +220,11 @@ export class WebGLManager {
 		}
 		this.interval = setInterval(() => {
 			this.frame++;
-			this.timeEllapsed += interval;
+			this.timeElapsed += interval;
 			let arr = Object.values(this.onEachFrameFunctions);
 
 			for (let i = 0; i < arr.length; i++) {
-				arr[i](this, this.frame, this.timeEllapsed);
+				arr[i](this, this.frame, this.timeElapsed);
 			}
 		}, interval);
 		return ok(this);
