@@ -84,7 +84,7 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 	useEffect(() => {
 		proxyRef.current?.checkWebGLVitalsAsync().then((result) => {
 			for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('f_'))) {
-				proxyRef.current?.runArbitraryOnWorkerContext(value, key.includes('each'));
+				proxyRef.current?.runArbitraryOnWorkerContext(key, value, key.includes('each'));
 			}
 		});
 	}, fDeps);

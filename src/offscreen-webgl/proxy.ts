@@ -123,7 +123,7 @@ class WebGLManagerProxyClass {
 		});
 	}
 
-	public runArbitraryOnWorkerContext(fn: RunOnWorkerContextFn, onEachFrame: boolean = false) {
+	public runArbitraryOnWorkerContext(key: string, fn: RunOnWorkerContextFn, onEachFrame: boolean = false) {
 		const id = uuidv4();
 		WebGLManagerProxyClass.worker?.postMessage({
 			type: WorkerMessageType.EVAL_FN,
@@ -131,11 +131,12 @@ class WebGLManagerProxyClass {
 			onEachFrame,
 			id,
 			proxyId: this.PROXY_ID,
+			key,
 		} as WorkerMessages);
 		return;
 	}
 
-	public runArbitraryOnWorkerContextAsync<T>(fn: RunOnWorkerContextFn<T>, onEachFrame: boolean = false) {
+	public runArbitraryOnWorkerContextAsync<T>(key: string, fn: RunOnWorkerContextFn<T>, onEachFrame: boolean = false) {
 		const id = uuidv4();
 		WebGLManagerProxyClass.worker?.postMessage({
 			type: WorkerMessageType.EVAL_FN,
@@ -144,6 +145,7 @@ class WebGLManagerProxyClass {
 			id,
 			async: true,
 			proxyId: this.PROXY_ID,
+			key,
 		} as WorkerMessages);
 
 		return new Promise<T>((resolve) => {

@@ -26,7 +26,7 @@ export type WorkerMessages =
 	| { type: WorkerMessageType.ERROR; id?: string; error: string; async?: boolean }
 	| { type: WorkerMessageType.CALL_METHOD; proxyId: string; id: string; method: keyof WebGLManager; args: any[]; async?: boolean }
 	| { type: WorkerMessageType.RESPONSE; id: string; result: any; error?: string }
-	| { type: WorkerMessageType.EVAL_FN; proxyId: string; id: string; fn: string; onEachFrame?: boolean; async?: boolean };
+	| { type: WorkerMessageType.EVAL_FN; proxyId: string; key: string; id: string; fn: string; onEachFrame?: boolean; async?: boolean };
 
 let glManagers: Record<string, WebGLManager> = {};
 
@@ -86,7 +86,7 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 				break;
 			}
 			case WorkerMessageType.EVAL_FN: {
-				const { fn, onEachFrame, id, async } = data;
+				const { fn, onEachFrame, id, async, key } = data;
 				if (!glManagers[data.proxyId]) {
 					postMessage({
 						type: WorkerMessageType.RESPONSE,
@@ -102,10 +102,10 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 						timeElapsed: number
 					) => any;
 					if (onEachFrame) {
-						glManagers[data.proxyId].runOnContext(f, true);
+						glManagers[data.proxyId].runOnContext(key, f, true);
 						if (async) postMessage({ type: WorkerMessageType.RESPONSE, id, result: ok('Setup RAF') });
 					} else {
-						const result = glManagers[data.proxyId].runOnContext(f, false);
+						const result = glManagers[data.proxyId].runOnContext(key, f, false);
 						if (async) postMessage({ type: WorkerMessageType.RESPONSE, id, result: JSON.stringify(result) });
 					}
 				} catch (error) {

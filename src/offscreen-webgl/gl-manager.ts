@@ -201,9 +201,9 @@ export class WebGLManager {
 		return this.program;
 	}
 
-	public runOnContext(fn: RunOnWorkerContextFn, onEachFrame: boolean = false): any {
+	public runOnContext(key: string, fn: RunOnWorkerContextFn, onEachFrame: boolean = false): any {
 		if (onEachFrame) {
-			this.onEachFrameFunctions[fn.name] = fn;
+			this.onEachFrameFunctions[key] = fn;
 		} else {
 			return fn(this, this.frame, this.timeElapsed);
 		}
