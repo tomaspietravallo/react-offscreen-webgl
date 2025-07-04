@@ -117,9 +117,10 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 				console.warn(`[OffscreenWebGLWorker] Unknown message type: ${data.type}`, data);
 		}
 	} catch (error) {
+		const e = new Error(error as any);
 		postMessage({
 			type: WorkerMessageType.ERROR,
-			error: new Error(error as any),
+			error: JSON.stringify({ message: e.message, stack: e.stack, name: e.name }),
 			id: (data as WorkerMessages & { type: WorkerMessageType.CALL_METHOD }).id, // or undefined
 		});
 	}
