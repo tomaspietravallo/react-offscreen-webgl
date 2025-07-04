@@ -16,25 +16,40 @@ export enum WorkerMessageType {
 
 export type WorkerMessages =
 	| {
+			proxyId: string;
 			type: WorkerMessageType.INIT;
 			canvas: OffscreenCanvas;
 			async?: boolean;
 	  }
-	| { type: WorkerMessageType.PAUSE; async?: boolean }
-	| { type: WorkerMessageType.RESUME; async?: boolean }
+	| { type: WorkerMessageType.PAUSE; proxyId: string; async?: boolean }
+	| { type: WorkerMessageType.RESUME; proxyId: string; async?: boolean }
 	| { type: WorkerMessageType.ERROR; id?: string; error: string; async?: boolean }
-	| { type: WorkerMessageType.CALL_METHOD; id: string; method: keyof WebGLManager; args: any[]; async?: boolean }
+	| { type: WorkerMessageType.CALL_METHOD; proxyId: string; id: string; method: keyof WebGLManager; args: any[]; async?: boolean }
 	| { type: WorkerMessageType.RESPONSE; id: string; result: any; error?: string }
-	| { type: WorkerMessageType.EVAL_FN; id: string; fn: string; onEachFrame?: boolean; async?: boolean };
+	| { type: WorkerMessageType.EVAL_FN; proxyId: string; id: string; fn: string; onEachFrame?: boolean; async?: boolean };
 
-let glManager: WebGLManager | null = null;
+let glManagers: Record<string, WebGLManager> = {};
 
 addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
-	const { data } = event;
+	const { data } = event as {
+		data: WorkerMessages & { type: WorkerMessageType.INIT | WorkerMessageType.CALL_METHOD | WorkerMessageType.EVAL_FN };
+	};
+
 	if (!data || !data.type) return;
 
-	if (data.type != WorkerMessageType.INIT && !glManager) {
-		postMessage({ type: WorkerMessageType.ERROR, error: 'WebGLManager not initialized' });
+	if (!data.proxyId) {
+		postMessage({
+			type: WorkerMessageType.ERROR,
+			error: `[OffscreenWebGLWorker] proxyId is required on inbound messages. ${JSON.stringify(data)}`,
+		});
+		return;
+	}
+
+	if (data.type != WorkerMessageType.INIT && !glManagers[data.proxyId]) {
+		postMessage({
+			type: WorkerMessageType.ERROR,
+			error: `[OffscreenWebGLWorker, ${WORKER_ID}] WebGLManager not initialized for proxyId: ${data.proxyId}`,
+		});
 		return;
 	}
 
@@ -46,20 +61,24 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 				let m = WebGLManager.fromHTMLCanvasElement(canvas as unknown as HTMLCanvasElement);
 
 				if (m.error) {
-					console.error(`[${WORKER_ID}] Error creating WebGLManager:`, m.error);
+					console.error(`[OffscreenWebGLWorker, ${WORKER_ID}] Error creating WebGLManager:`, m.error);
 					postMessage({ type: WorkerMessageType.ERROR, error: m.error.message });
 					return;
-				} else glManager = m.data;
+				} else glManagers[data.proxyId] = m.data;
 				break;
 			}
 			case WorkerMessageType.CALL_METHOD: {
 				const { method, args, id, async } = data;
-				if (!glManager || !(method in glManager)) {
-					postMessage({ type: WorkerMessageType.RESPONSE, id, error: `Method ${method} not found` });
+				if (!glManagers[data.proxyId] || !(method in glManagers[data.proxyId])) {
+					postMessage({
+						type: WorkerMessageType.RESPONSE,
+						id,
+						error: `[OffscreenWebGLWorker] Proxying ${data.proxyId}: Method ${method} not found`,
+					});
 					return;
 				}
 				try {
-					const result = await (glManager as any)[method](...args);
+					const result = await (glManagers[data.proxyId] as any)[method](...args);
 					if (async) postMessage({ type: WorkerMessageType.RESPONSE, id, result: JSON.stringify(result) });
 				} catch (error) {
 					postMessage({ type: WorkerMessageType.RESPONSE, id, error: JSON.stringify(error) });
@@ -68,8 +87,12 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 			}
 			case WorkerMessageType.EVAL_FN: {
 				const { fn, onEachFrame, id, async } = data;
-				if (!glManager) {
-					postMessage({ type: WorkerMessageType.RESPONSE, id, error: 'WebGLManager not initialized' });
+				if (!glManagers[data.proxyId]) {
+					postMessage({
+						type: WorkerMessageType.RESPONSE,
+						id,
+						error: `[OffscreenWebGLWorker] Proxying ${data.proxyId}: WebGLManager not initialized`,
+					});
 					return;
 				}
 				try {
@@ -79,10 +102,10 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 						timeEllapsed: number
 					) => any;
 					if (onEachFrame) {
-						glManager.runOnContext(f, true);
+						glManagers[data.proxyId].runOnContext(f, true);
 						if (async) postMessage({ type: WorkerMessageType.RESPONSE, id, result: ok('Setup RAF') });
 					} else {
-						const result = glManager.runOnContext(f, false);
+						const result = glManagers[data.proxyId].runOnContext(f, false);
 						if (async) postMessage({ type: WorkerMessageType.RESPONSE, id, result: JSON.stringify(result) });
 					}
 				} catch (error) {
@@ -90,8 +113,8 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 				}
 				break;
 			}
-			default:
-				console.warn(`[OffscreenWebGLWorker] Unknown message type: ${data.type}`);
+			default: // @ts-ignore-next-line
+				console.warn(`[OffscreenWebGLWorker] Unknown message type: ${data.type}`, data);
 		}
 	} catch (error) {
 		postMessage({

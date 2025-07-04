@@ -13,8 +13,10 @@ type MappedManagerFunctionsAsync = {
 export type WebGLManagerProxyType = WebGLManagerProxyClass & MappedManagerFunctions & MappedManagerFunctionsAsync;
 
 class WebGLManagerProxyClass {
-	private worker: Worker;
-	private pendingResponses: Record<string, (response: any) => void> = {};
+	private static worker: Worker | null = null;
+	private static pendingResponses: Record<string, (response: any) => void> = {};
+	private readonly PROXY_ID = `WebGLManagerProxy-${uuidv4()}`;
+
 	private static readonly _managerPrototype = Object.getOwnPropertyNames(WebGLManager.prototype).reduce(
 		(acc, prop) => {
 			if ((WebGLManager.prototype as Record<string, any>)[prop as string] instanceof Function) {
@@ -27,34 +29,41 @@ class WebGLManagerProxyClass {
 	);
 
 	constructor(canvas: HTMLCanvasElement) {
-		this.worker = new WebWorker();
-		this.worker.onmessage = this.handleMessage.bind(this);
+		if (!WebGLManagerProxyClass.worker) {
+			WebGLManagerProxyClass.worker = new WebWorker();
+			WebGLManagerProxyClass.worker.onmessage = WebGLManagerProxyClass.handleMessage.bind(this);
+		}
 
 		const offscreenCanvas = canvas.transferControlToOffscreen()!;
 
-		this.worker.postMessage(
+		WebGLManagerProxyClass.worker.postMessage(
 			{
 				type: 'INIT',
 				canvas: offscreenCanvas,
+				proxyId: this.PROXY_ID,
 			} as WorkerMessages,
 			{
 				transfer: [offscreenCanvas],
 			}
 		);
 
-		return new Proxy(this, {
+		return WebGLManagerProxyClass.wrapThisPrototype(this);
+	}
+
+	private static wrapThisPrototype(thisObj: WebGLManagerProxyClass): WebGLManagerProxyType {
+		return new Proxy(thisObj, {
 			get(target, prop, receiver) {
 				if (WebGLManagerProxyClass._managerPrototype[prop as string]) {
 					if (prop.toString().endsWith('Async')) {
 						return (...args: any[]) => {
-							return target.callMethodAsync(
+							return thisObj.callMethodAsync(
 								WebGLManagerProxyClass._managerPrototype[prop as string] as keyof WebGLManager,
 								...args
 							);
 						};
 					} else {
 						return (...args: any[]) => {
-							target.callMethod(prop as keyof WebGLManager, ...args);
+							thisObj.callMethod(prop as keyof WebGLManager, ...args);
 						};
 					}
 				}
@@ -63,21 +72,21 @@ class WebGLManagerProxyClass {
 		}) as unknown as WebGLManagerProxyType;
 	}
 
-	private handleMessage(event: MessageEvent<WorkerMessages>) {
+	private static handleMessage(event: MessageEvent<WorkerMessages>) {
 		const { data } = event;
 		if (data.type === WorkerMessageType.RESPONSE) {
 			const { id, result, error } = data;
-			if (this.pendingResponses[id]) {
-				this.pendingResponses[id](error ? Promise.reject(new Error(error)) : Promise.resolve(result));
-				delete this.pendingResponses[id];
+			if (WebGLManagerProxyClass.pendingResponses[id]) {
+				WebGLManagerProxyClass.pendingResponses[id](error ? Promise.reject(new Error(error)) : Promise.resolve(result));
+				delete WebGLManagerProxyClass.pendingResponses[id];
 			} else {
 				console.warn(`[WebGLManagerProxy] No pending response for ID: ${id}`, data);
 			}
 		} else if (data.type === WorkerMessageType.ERROR) {
 			const { error, id } = data;
-			if (id && this.pendingResponses[id]) {
-				this.pendingResponses[id](Promise.reject(new Error(error)));
-				delete this.pendingResponses[id];
+			if (id && WebGLManagerProxyClass.pendingResponses[id]) {
+				WebGLManagerProxyClass.pendingResponses[id](Promise.reject(new Error(error)));
+				delete WebGLManagerProxyClass.pendingResponses[id];
 			} else {
 				console.error(`[WebGLManagerProxy] Error received without pending response for ID: ${id}`, error);
 			}
@@ -86,7 +95,13 @@ class WebGLManagerProxyClass {
 
 	public callMethod<ManagerMethod extends keyof WebGLManager>(method: ManagerMethod, ...args: any[]): void {
 		const id = uuidv4();
-		this.worker.postMessage({ type: WorkerMessageType.CALL_METHOD, method, args, id } as WorkerMessages);
+		WebGLManagerProxyClass.worker?.postMessage({
+			type: WorkerMessageType.CALL_METHOD,
+			proxyId: this.PROXY_ID,
+			method,
+			args,
+			id,
+		} as WorkerMessages);
 		return;
 	}
 
@@ -95,35 +110,44 @@ class WebGLManagerProxyClass {
 		...args: any[]
 	): Promise<ReturnType<WebGLManager[ManagerMethod] extends (...args: any) => any ? WebGLManager[ManagerMethod] : never>> {
 		const id = uuidv4();
-		this.worker.postMessage({ type: WorkerMessageType.CALL_METHOD, method, args, id, async: true } as WorkerMessages);
+		WebGLManagerProxyClass.worker?.postMessage({
+			type: WorkerMessageType.CALL_METHOD,
+			proxyId: this.PROXY_ID,
+			method,
+			args,
+			id,
+			async: true,
+		} as WorkerMessages);
 		return new Promise((resolve) => {
-			this.pendingResponses[id] = resolve;
+			WebGLManagerProxyClass.pendingResponses[id] = resolve;
 		});
 	}
 
 	public runArbitraryOnWorkerContext(fn: RunOnWorkerContextFn, onEachFrame: boolean = false) {
 		const id = uuidv4();
-		this.worker.postMessage({
+		WebGLManagerProxyClass.worker?.postMessage({
 			type: WorkerMessageType.EVAL_FN,
 			fn: fn.toString(),
 			onEachFrame,
 			id,
+			proxyId: this.PROXY_ID,
 		} as WorkerMessages);
 		return;
 	}
 
 	public runArbitraryOnWorkerContextAsync<T>(fn: RunOnWorkerContextFn<T>, onEachFrame: boolean = false) {
 		const id = uuidv4();
-		this.worker.postMessage({
+		WebGLManagerProxyClass.worker?.postMessage({
 			type: WorkerMessageType.EVAL_FN,
 			fn: fn.toString(),
 			onEachFrame,
 			id,
 			async: true,
+			proxyId: this.PROXY_ID,
 		} as WorkerMessages);
 
 		return new Promise<T>((resolve) => {
-			this.pendingResponses[id] = resolve;
+			WebGLManagerProxyClass.pendingResponses[id] = resolve;
 		});
 	}
 }
