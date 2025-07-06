@@ -33,6 +33,17 @@ export class WebGLManager {
 		if (!this.program) {
 			throw new Error('[OffscreenCanvas @ GLManager] Failed to create WebGL program');
 		}
+
+		return new Proxy(this, {
+			get: (target, prop, receiver) => {
+				if (prop.toString().endsWith('Async')) {
+					const originalMethod = target[prop.toString().slice(0, -5) as keyof WebGLManager] as (...args: any[]) => any;
+					// @ts-expect-error Target prototype signature
+					return async (...args: any[]) => target[prop.toString().slice(0, -5) as keyof WebGLManager](args);
+				}
+				return Reflect.get(target, prop, receiver);
+			},
+		});
 	}
 
 	static fromHTMLCanvasElement(canvas: HTMLCanvasElement): Result<WebGLManager> {

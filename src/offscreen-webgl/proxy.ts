@@ -6,7 +6,7 @@ import WebWorker from '../offscreen-webgl/webgl.worker?worker';
 type MappedManagerFunctions = { [K in keyof WebGLManager]: WebGLManager[K] extends (...args: any) => any ? WebGLManager[K] : never };
 type MappedManagerFunctionsAsync = {
 	[K in keyof WebGLManager as `${K & string}Async`]: WebGLManager[K] extends (...args: any) => any
-		? (args?: any) => Promise<ReturnType<WebGLManager[K]>>
+		? (...args: Parameters<WebGLManager[K]>) => Promise<ReturnType<WebGLManager[K]>>
 		: never;
 };
 
@@ -53,7 +53,7 @@ class WebGLManagerProxyClass {
 	private static wrapThisPrototype(thisObj: WebGLManagerProxyClass): WebGLManagerProxyType {
 		return new Proxy(thisObj, {
 			get(target, prop, receiver) {
-				if (WebGLManagerProxyClass._managerPrototype[prop as string]) {
+				if (WebGLManagerProxyClass._managerPrototype[prop as string] && !(prop as string).startsWith('runOnContext')) {
 					if (prop.toString().endsWith('Async')) {
 						return (...args: any[]) => {
 							return thisObj.callMethodAsync(
@@ -123,7 +123,7 @@ class WebGLManagerProxyClass {
 		});
 	}
 
-	public runArbitraryOnWorkerContext(key: string, fn: RunOnWorkerContextFn, onEachFrame: boolean = false) {
+	public runOnContext(key: string, fn: RunOnWorkerContextFn, onEachFrame: boolean = false) {
 		const id = uuidv4();
 		WebGLManagerProxyClass.worker?.postMessage({
 			type: WorkerMessageType.EVAL_FN,
@@ -136,7 +136,7 @@ class WebGLManagerProxyClass {
 		return;
 	}
 
-	public runArbitraryOnWorkerContextAsync<T>(key: string, fn: RunOnWorkerContextFn<T>, onEachFrame: boolean = false) {
+	public runOnContextAsync<T>(key: string, fn: RunOnWorkerContextFn<T>, onEachFrame: boolean = false) {
 		const id = uuidv4();
 		WebGLManagerProxyClass.worker?.postMessage({
 			type: WorkerMessageType.EVAL_FN,

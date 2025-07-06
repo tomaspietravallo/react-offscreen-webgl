@@ -62,29 +62,29 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 
 	useEffect(() => {
 		new Promise(async (resolve) => {
-			if (!proxyRef.current || (await proxyRef.current.callMethodAsync('checkWebGLVitals')).error) {
+			if (!proxyRef.current || (await proxyRef.current.checkWebGLVitalsAsync()).error) {
 				console.warn('[OffscreenWebGL] WebGLManager is not ready yet');
 				return;
 			}
 
 			for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('u_'))) {
-				await proxyRef.current?.callMethodAsync('updateUniform', key as WebGLUniformName, value);
+				await proxyRef.current?.updateUniformAsync(key as WebGLUniformName, value as number | number[]);
 			}
 
 			let e: Error | null = null;
-			if ((e = (await proxyRef.current.callMethodAsync('checkWebGLVitals')).error)) {
+			if ((e = (await proxyRef.current.checkWebGLVitalsAsync()).error)) {
 				console.error('[OffscreenWebGL] WebGL error:', e);
 				return;
 			}
 
-			await proxyRef.current.callMethodAsync('paintCanvas');
+			await proxyRef.current.paintCanvasAsync();
 		}).catch(console.error);
 	}, uDeps);
 
 	useEffect(() => {
 		proxyRef.current?.checkWebGLVitalsAsync().then((result) => {
 			for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('f_'))) {
-				proxyRef.current?.runArbitraryOnWorkerContext(key, value, key.includes('each'));
+				proxyRef.current?.runOnContext(key, value, key.includes('each'));
 			}
 		});
 	}, fDeps);
