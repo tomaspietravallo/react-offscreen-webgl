@@ -131,7 +131,6 @@ export class WebGLManager {
 				return response.text();
 			})
 			.then((shaderText) => {
-				console.log('SET VERTEX SHADERS');
 				return this.setVertexShader(shaderText);
 			})
 			.catch((error) => err(new Error(`[OffscreenCanvas @ GLManager] Error fetching vertex shader: ${error.message}`)));
