@@ -6,7 +6,9 @@ import { WebGLManagerProxy, WebGLManagerProxyType } from './proxy';
 
 interface OffscreenWebGLProps {
 	vertexShader?: string;
+	vertexShaderURL?: string;
 	fragmentShader?: string;
+	fragmentShaderURL?: string;
 	refreshRate?: number; // in FPS, default is 30
 	disableResizeObserver?: boolean;
 
@@ -49,7 +51,28 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 		proxyRef.current = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 
 		new Promise(async (resolve) => {
-			await proxyRef.current?.compileProgram(vertexShader, [fragmentShader]);
+			let vertexShaderText = vertexShader;
+			let fragmentShaderText = fragmentShader;
+
+			if (props.vertexShaderURL) {
+				const response = await fetch(props.vertexShaderURL);
+				if (!response.ok) {
+					throw new Error(`[OffscreenWebGL] Failed to fetch vertex shader from ${props.vertexShaderURL}`);
+				}
+				const shaderText = await response.text();
+				vertexShaderText = shaderText;
+			}
+
+			if (props.fragmentShaderURL) {
+				const response = await fetch(props.fragmentShaderURL);
+				if (!response.ok) {
+					throw new Error(`[OffscreenWebGL] Failed to fetch fragment shader from ${props.fragmentShaderURL}`);
+				}
+				const shaderText = await response.text();
+				fragmentShaderText = shaderText;
+			}
+
+			await proxyRef.current?.compileProgram(vertexShaderText, [fragmentShaderText]);
 
 			await proxyRef.current?.useProgram();
 

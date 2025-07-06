@@ -9,6 +9,7 @@ function OffscreenWebGLContainer(props) {
 				f_each_paint={(manager, frame, time) => {
 					manager.paintCanvas();
 				}}
+				{...props}
 			/>
 		</div>
 	);
@@ -30,8 +31,8 @@ function App() {
 			>
 				<h1>Testing / Development environment</h1>
 				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(1, 1fr)', gap: '20px' }}>
-					<OffscreenWebGLContainer />
-					<OffscreenWebGLContainer />
+					<OffscreenWebGLContainer fragmentShaderURL={'default.glsl'} />
+					<OffscreenWebGLContainer fragmentShaderURL={'default-blue-1.glsl'} />
 					<OffscreenWebGLContainer />
 				</div>
 			</header>
