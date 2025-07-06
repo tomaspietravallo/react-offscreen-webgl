@@ -33,7 +33,13 @@ function App() {
 				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(1, 1fr)', gap: '20px' }}>
 					<OffscreenWebGLContainer fragmentShaderURL={'default.glsl'} />
 					<OffscreenWebGLContainer fragmentShaderURL={'default-blue-1.glsl'} />
-					<OffscreenWebGLContainer />
+					<OffscreenWebGLContainer
+						fragmentShaderURL={'moving-circle.glsl'}
+						f_each_paint={(manager, frame, time) => {
+							manager.updateUniform('u_frame', frame);
+							manager.paintCanvas();
+						}}
+					/>
 				</div>
 			</header>
 		</div>
