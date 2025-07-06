@@ -84,7 +84,7 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 					postMessage({
 						type: WorkerMessageType.RESPONSE,
 						id,
-						error: `[OffscreenWebGLWorker, ${WORKER_ID}]: Error on method "${method}", args: ${args}.\n${JSON.stringify(error)}`,
+						error: `[OffscreenWebGLWorker, ${WORKER_ID}]: Error on method "${method}", args: ${args}.\n${error instanceof Error ? JSON.stringify({ message: error.message, stack: error.stack }) : JSON.stringify(error)}`,
 					});
 				}
 				break;
