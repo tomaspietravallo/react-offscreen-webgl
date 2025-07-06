@@ -6,7 +6,9 @@ import { WebGLManagerProxy, WebGLManagerProxyType } from './proxy';
 
 interface OffscreenWebGLProps {
 	vertexShader?: string;
+	vertexShaderURL?: string;
 	fragmentShader?: string;
+	fragmentShaderURL?: string;
 	refreshRate?: number; // in FPS, default is 30
 	disableResizeObserver?: boolean;
 
@@ -20,6 +22,8 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 	const CANVAS_ID = useRef(`OffscreenWebGLCanvas-${uuidv4()}`);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const proxyRef = useRef<WebGLManagerProxyType | null>(null);
+	const __setupPromise_resolve = useRef<((value: void | PromiseLike<void>) => void) | null>(null);
+	const setupPromise = useRef<Promise<void>>(new Promise<void>((resolve) => (__setupPromise_resolve.current = resolve)));
 
 	const uDeps = useMemo(
 		() =>
@@ -48,14 +52,28 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 
 		proxyRef.current = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 
-		new Promise(async (resolve) => {
-			await proxyRef.current?.compileProgram(vertexShader, [fragmentShader]);
+		new Promise<void>(async (resolve) => {
+			let vertexShaderText = vertexShader;
+			let fragmentShaderText = fragmentShader;
+
+			if (props.vertexShaderURL) {
+				await proxyRef.current?.setRemoteVertexShaderAsync(new URL(props.vertexShaderURL, window.location.origin).toString());
+			} else {
+				await proxyRef.current?.setVertexShaderAsync(vertexShaderText);
+			}
+
+			if (props.fragmentShaderURL) {
+				await proxyRef.current?.setRemoteFragmentShadersAsync(new URL(props.fragmentShaderURL, window.location.origin).toString());
+			} else {
+				await proxyRef.current?.setFragmentShadersAsync([fragmentShaderText]);
+			}
 
 			await proxyRef.current?.useProgram();
 
 			await proxyRef.current?.setupWholeScreenQuad();
 
 			await proxyRef.current?.paintCanvas();
+			resolve(__setupPromise_resolve.current?.());
 		}).catch(console.error);
 
 		return () => {};
@@ -63,6 +81,8 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 
 	useEffect(() => {
 		new Promise(async (resolve) => {
+			await setupPromise.current;
+
 			if (!proxyRef.current || (await proxyRef.current.checkWebGLVitalsAsync()).error) {
 				console.warn('[OffscreenWebGL] WebGLManager is not ready yet');
 				return;
@@ -83,41 +103,49 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 	}, uDeps);
 
 	useEffect(() => {
-		proxyRef.current?.checkWebGLVitalsAsync().then((result) => {
-			for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('f_'))) {
-				proxyRef.current?.runOnContext(key, value, key.includes('each'));
-			}
+		setupPromise.current.then(() => {
+			proxyRef.current?.checkWebGLVitalsAsync().then((result) => {
+				for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('f_'))) {
+					proxyRef.current?.runOnContext(key, value, key.includes('each'));
+				}
+			});
 		});
 	}, fDeps);
 
 	useEffect(() => {
-		if (!proxyRef.current) return;
+		setupPromise.current.then(() => {
+			if (!proxyRef.current) return;
 
-		if (props.refreshRate && props.refreshRate > 0) {
-			console.log(`[OffscreenWebGL] Setting refresh rate to ${props.refreshRate} FPS`);
-			proxyRef.current.setFrameRate(props.refreshRate);
-		} else {
-			if (props.refreshRate) {
-				console.warn(`[OffscreenWebGL] Invalid refresh rate, using default (${WebGLManager.DEFAULT_FRAME_RATE} FPS)`);
+			if (props.refreshRate && props.refreshRate > 0) {
+				console.log(`[OffscreenWebGL] Setting refresh rate to ${props.refreshRate} FPS`);
+				proxyRef.current.setFrameRate(props.refreshRate);
+			} else {
+				if (props.refreshRate) {
+					console.warn(`[OffscreenWebGL] Invalid refresh rate, using default (${WebGLManager.DEFAULT_FRAME_RATE} FPS)`);
+				}
+				proxyRef.current.setFrameRate(30);
 			}
-			proxyRef.current.setFrameRate(30);
-		}
+		});
 	}, [props.refreshRate]);
 
 	useEffect(() => {
-		const canvas = canvasRef.current;
-		if (!canvas || !proxyRef.current || disableResizeObserver) return;
+		let observer: ResizeObserver | null = null;
 
-		const observer = new ResizeObserver(() => {
-			if (disableResizeObserver) return observer.disconnect();
-			proxyRef.current?.resize(canvasRef.current?.width!, canvasRef.current?.height!);
-			proxyRef.current?.updateUniform('u_resolution', [canvasRef.current?.width!, canvasRef.current?.height!]);
+		setupPromise.current.then(() => {
+			const canvas = canvasRef.current;
+			if (!canvas || !proxyRef.current || disableResizeObserver) return;
+
+			observer = new ResizeObserver(() => {
+				if (disableResizeObserver) return observer?.disconnect();
+				proxyRef.current?.resize(canvasRef.current?.width!, canvasRef.current?.height!);
+				proxyRef.current?.updateUniform('u_resolution', [canvasRef.current?.width!, canvasRef.current?.height!]);
+			});
+
+			observer.observe(canvas);
 		});
 
-		observer.observe(canvas);
-
 		return () => {
-			observer.disconnect();
+			observer?.disconnect();
 		};
 	}, [disableResizeObserver]);
 

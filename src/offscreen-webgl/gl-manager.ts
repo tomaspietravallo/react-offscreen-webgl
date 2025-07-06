@@ -87,13 +87,19 @@ export class WebGLManager {
 		return ok(this);
 	}
 
-	public compileProgram(vertexShaderSource: string, fragmentShaderSources: string[]): Result<WebGLManager> {
+	public setVertexShader(vertexShaderSource: string): Result<WebGLManager> {
 		const { data: vertexShader, error: vertexShaderErr } = createShaderFromSource(this.gl, this.gl.VERTEX_SHADER, vertexShaderSource);
 
 		if (vertexShaderErr) {
 			return err(new Error(`[OffscreenCanvas @ GLManager] Failed to compile Vertex Shader: ${vertexShaderErr}`));
-		} else this.vertexShader = vertexShader;
+		} else {
+			this.vertexShader = vertexShader;
+		}
 
+		return ok(this);
+	}
+
+	public setFragmentShaders(fragmentShaderSources: string[]): Result<WebGLManager> {
 		const fs = [];
 
 		try {
@@ -114,6 +120,54 @@ export class WebGLManager {
 		}
 
 		return ok(this);
+	}
+
+	public setRemoteVertexShader(url: string): Promise<Result<WebGLManager>> {
+		return fetch(url)
+			.then((response) => {
+				if (!response.ok) {
+					throw new Error(`[OffscreenCanvas @ GLManager] Failed to fetch vertex shader from ${url}`);
+				}
+				return response.text();
+			})
+			.then((shaderText) => {
+				return this.setVertexShader(shaderText);
+			})
+			.catch((error) => err(new Error(`[OffscreenCanvas @ GLManager] Error fetching vertex shader: ${error.message}`)));
+	}
+
+	public setRemoteFragmentShaders(urls: string | string[]): Promise<Result<WebGLManager>> {
+		if (typeof urls === 'string') {
+			urls = [urls];
+		}
+
+		const fetchPromises = urls.map((url) =>
+			fetch(url)
+				.then(async (response) => {
+					if (!response.ok) {
+						throw new Error(`[OffscreenCanvas @ GLManager] Failed to fetch fragment shader from ${url}`);
+					}
+					return ok(await response.text());
+				})
+				.catch((error) => err(new Error(`[OffscreenCanvas @ GLManager] Error fetching fragment shader: ${error.message}`)))
+		);
+
+		return Promise.all(fetchPromises)
+			.then((results) => {
+				const errors = results.filter((result) => result.error);
+				if (errors.length > 0) {
+					return err(
+						new Error(
+							`[OffscreenCanvas @ GLManager] Errors fetching fragment shaders: ${errors.map((e) => e.error?.message).join(', ')}`
+						)
+					);
+				}
+				const fragmentShaderSources = results.map((result) => result.data!);
+				return this.setFragmentShaders(fragmentShaderSources);
+			})
+			.catch((error) => {
+				return err(new Error(`[OffscreenCanvas @ GLManager] Error setting remote fragment shaders: ${error.message}`));
+			});
 	}
 
 	public useProgram(): Result<WebGLManager> {

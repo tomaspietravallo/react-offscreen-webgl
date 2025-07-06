@@ -81,7 +81,11 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 					const result = await (glManagers[data.proxyId] as any)[method](...args);
 					if (async) postMessage({ type: WorkerMessageType.RESPONSE, id, result: JSON.stringify(result) });
 				} catch (error) {
-					postMessage({ type: WorkerMessageType.RESPONSE, id, error: JSON.stringify(error) });
+					postMessage({
+						type: WorkerMessageType.RESPONSE,
+						id,
+						error: `[OffscreenWebGLWorker, ${WORKER_ID}]: Error on method "${method}", args: ${args}.\n${error instanceof Error ? JSON.stringify({ message: error.message, stack: error.stack }) : JSON.stringify(error)}`,
+					});
 				}
 				break;
 			}

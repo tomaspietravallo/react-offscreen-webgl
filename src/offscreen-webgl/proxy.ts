@@ -110,6 +110,11 @@ class WebGLManagerProxyClass {
 		...args: any[]
 	): Promise<ReturnType<WebGLManager[ManagerMethod] extends (...args: any) => any ? WebGLManager[ManagerMethod] : never>> {
 		const id = uuidv4();
+
+		const promise = new Promise((resolve) => {
+			WebGLManagerProxyClass.pendingResponses[id] = resolve;
+		}) as ReturnType<WebGLManager[ManagerMethod] extends (...args: any) => any ? WebGLManager[ManagerMethod] : never>;
+
 		WebGLManagerProxyClass.worker?.postMessage({
 			type: WorkerMessageType.CALL_METHOD,
 			proxyId: this.PROXY_ID,
@@ -118,9 +123,8 @@ class WebGLManagerProxyClass {
 			id,
 			async: true,
 		} as WorkerMessages);
-		return new Promise((resolve) => {
-			WebGLManagerProxyClass.pendingResponses[id] = resolve;
-		});
+
+		return promise;
 	}
 
 	public runOnContext(key: string, fn: RunOnWorkerContextFn, onEachFrame: boolean = false) {
