@@ -1,21 +1,24 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { type FC, useEffect, useMemo, useRef } from 'react';
 import { DEFAULT_FS_SHADER, DEFAULT_VS_SHADER } from '../defaults';
-import { WebGLManager, WebGLUniformName } from './gl-manager';
+import { RunOnWorkerContextFn, RunOnWorkerContextFnName, WebGLManager, WebGLUniformName } from './gl-manager';
 import { uuidv4 } from '../utils/uuid';
+import { WebGLManagerProxy, WebGLManagerProxyType } from './proxy';
 
 interface OffscreenWebGLProps {
 	vertexShader?: string;
 	fragmentShader?: string;
+	refreshRate?: number; // in FPS, default is 30
 
 	[key: WebGLUniformName]: number | number[];
+	[key: RunOnWorkerContextFnName]: RunOnWorkerContextFn<any>;
 }
 
-export default function OffscreenWebGL(props: OffscreenWebGLProps) {
+export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLProps) => {
 	const { vertexShader = DEFAULT_VS_SHADER, fragmentShader = DEFAULT_FS_SHADER } = props;
 
+	const CANVAS_ID = useRef(`OffscreenWebGLCanvas-${uuidv4()}`);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
-	const canvasID = useRef(`OffscreenWebGL-${uuidv4()}`);
-	const manager = useRef<WebGLManager | null>(null);
+	const proxyRef = useRef<WebGLManagerProxyType | null>(null);
 
 	const uDeps = useMemo(
 		() =>
@@ -25,64 +28,80 @@ export default function OffscreenWebGL(props: OffscreenWebGLProps) {
 		[props]
 	);
 
+	const fDeps = useMemo(
+		() =>
+			Object.entries(props)
+				.filter(([key]) => key.startsWith('f_'))
+				.map(([, value]) => value),
+		[props]
+	);
+
 	useEffect(() => {
 		const canvas = canvasRef.current;
 		if (!canvas) return;
 
-		if (manager.current) {
-			console.log('[OffscreenWebGL] Reusing existing WebGLManager');
+		if (proxyRef.current) {
+			console.log('[OffscreenWebGL] Reusing existing WebGLManagerProxy/Worker');
 			return;
 		}
 
-		const m = WebGLManager.fromHTMLCanvasElement(canvas);
+		proxyRef.current = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 
-		if (m.error) {
-			console.error('[OffscreenWebGL] Error creating GLManager:', m.error);
-			return;
-		}
+		new Promise(async (resolve) => {
+			await proxyRef.current?.compileProgram(vertexShader, [fragmentShader]);
 
-		manager.current = m.data;
+			await proxyRef.current?.useProgram();
 
-		if (manager.current.compileProgram(vertexShader, [fragmentShader]).error) {
-			console.error(
-				'[OffscreenWebGL] Error compiling shaders:',
-				manager.current.compileProgram(vertexShader, [fragmentShader]).error
-			);
-			return;
-		}
+			await proxyRef.current?.setupWholeScreenQuad();
 
-		if (manager.current?.useProgram().error) {
-			console.error('[OffscreenWebGL] Error using program:', manager.current.useProgram().error);
-			return;
-		}
+			await proxyRef.current?.paintCanvas();
+		}).catch(console.error);
 
-		if (manager.current?.setupWholeScreenQuad().error) {
-			console.error('[OffscreenWebGL] Error setting up whole screen quad:', manager.current.setupWholeScreenQuad().error);
-			return;
-		}
-
-		manager?.current?.updateUniform('u_resolution', [canvas.width, canvas.height]);
-
-		return () => {
-			// manager.current?.destroy();
-		};
+		return () => {};
 	}, []);
 
 	useEffect(() => {
-		if (!manager.current || !manager.current.isReady) {
-			console.warn('[OffscreenWebGL] WebGLManager is not ready yet');
-			return;
-		}
+		new Promise(async (resolve) => {
+			if (!proxyRef.current || (await proxyRef.current.checkWebGLVitalsAsync()).error) {
+				console.warn('[OffscreenWebGL] WebGLManager is not ready yet');
+				return;
+			}
 
-		for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('u_'))) {
-			manager.current?.updateUniform(key as WebGLUniformName, value);
-		}
-		if (manager.current?.checkWebGLVitals().error) {
-			console.error('[OffscreenWebGL] WebGL error:', manager.current.checkWebGLVitals().error);
-			return;
-		}
-		manager.current?.paintCanvas();
+			for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('u_'))) {
+				await proxyRef.current?.updateUniformAsync(key as WebGLUniformName, value as number | number[]);
+			}
+
+			let e: Error | null = null;
+			if ((e = (await proxyRef.current.checkWebGLVitalsAsync()).error)) {
+				console.error('[OffscreenWebGL] WebGL error:', e);
+				return;
+			}
+
+			await proxyRef.current.paintCanvasAsync();
+		}).catch(console.error);
 	}, uDeps);
 
-	return <canvas id={canvasID.current} ref={canvasRef} style={{ width: '100%', height: '100%' }}></canvas>;
-}
+	useEffect(() => {
+		proxyRef.current?.checkWebGLVitalsAsync().then((result) => {
+			for (const [key, value] of Object.entries(props).filter(([key]) => key.startsWith('f_'))) {
+				proxyRef.current?.runOnContext(key, value, key.includes('each'));
+			}
+		});
+	}, fDeps);
+
+	useEffect(() => {
+		if (!proxyRef.current) return;
+
+		if (props.refreshRate && props.refreshRate > 0) {
+			console.log(`[OffscreenWebGL] Setting refresh rate to ${props.refreshRate} FPS`);
+			proxyRef.current.setFrameRate(props.refreshRate);
+		} else {
+			if (props.refreshRate) {
+				console.warn(`[OffscreenWebGL] Invalid refresh rate, using default (${WebGLManager.DEFAULT_FRAME_RATE} FPS)`);
+			}
+			proxyRef.current.setFrameRate(30);
+		}
+	}, [props.refreshRate]);
+
+	return <canvas id={CANVAS_ID.current} ref={canvasRef} style={{ width: '100%', height: '100%' }}></canvas>;
+};

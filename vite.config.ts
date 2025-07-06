@@ -12,5 +12,9 @@ export default defineConfig({
 		sourcemap: true,
 		emptyOutDir: true,
 	},
-	plugins: [dts()],
+	plugins: [
+		dts({
+			insertTypesEntry: true,
+		}),
+	],
 });

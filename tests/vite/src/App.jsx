@@ -1,17 +1,16 @@
 import './App.css';
 import { OffscreenWebGL } from '../../../src/index';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 function OffscreenWebGLContainer(props) {
-	const [frame, setFrame] = useState(0);
-
-	requestAnimationFrame(() => {
-		setFrame((prev) => prev + 1);
-	});
-
 	return (
-		<div style={{ padding: '20px' }}>
-			<OffscreenWebGL u_resolution={[frame, frame]} />
+		<div style={{ padding: '20px', width: '350px', height: '200px' }}>
+			<OffscreenWebGL
+				f_each_paint={(manager, frame, time) => {
+					manager.updateUniform('u_resolution', [frame, frame]);
+					manager.paintCanvas();
+				}}
+			/>
 		</div>
 	);
 }
@@ -21,7 +20,9 @@ function App() {
 		<div className="App">
 			<header className="App-header">
 				<h1>Testing / Development environment</h1>
-				<div style={{ width: '350px', height: '200px' }}>
+				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(3, 1fr)', gap: '20px' }}>
+					<OffscreenWebGLContainer />
+					<OffscreenWebGLContainer />
 					<OffscreenWebGLContainer />
 				</div>
 			</header>
