@@ -8,13 +8,14 @@ interface OffscreenWebGLProps {
 	vertexShader?: string;
 	fragmentShader?: string;
 	refreshRate?: number; // in FPS, default is 30
+	disableResizeObserver?: boolean;
 
 	[key: WebGLUniformName]: number | number[];
 	[key: RunOnWorkerContextFnName]: RunOnWorkerContextFn<any>;
 }
 
 export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLProps) => {
-	const { vertexShader = DEFAULT_VS_SHADER, fragmentShader = DEFAULT_FS_SHADER } = props;
+	const { vertexShader = DEFAULT_VS_SHADER, fragmentShader = DEFAULT_FS_SHADER, disableResizeObserver = false } = props;
 
 	const CANVAS_ID = useRef(`OffscreenWebGLCanvas-${uuidv4()}`);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -102,6 +103,23 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 			proxyRef.current.setFrameRate(30);
 		}
 	}, [props.refreshRate]);
+
+	useEffect(() => {
+		const canvas = canvasRef.current;
+		if (!canvas || !proxyRef.current || disableResizeObserver) return;
+
+		const observer = new ResizeObserver(() => {
+			if (disableResizeObserver) return observer.disconnect();
+			proxyRef.current?.resize(canvasRef.current?.width!, canvasRef.current?.height!);
+			proxyRef.current?.updateUniform('u_resolution', [canvasRef.current?.width!, canvasRef.current?.height!]);
+		});
+
+		observer.observe(canvas);
+
+		return () => {
+			observer.disconnect();
+		};
+	}, [disableResizeObserver]);
 
 	return <canvas id={CANVAS_ID.current} ref={canvasRef} style={{ width: '100%', height: '100%' }}></canvas>;
 };

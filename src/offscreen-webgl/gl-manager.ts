@@ -146,6 +146,7 @@ export class WebGLManager {
 		this.canvas.width = width;
 		this.canvas.height = height;
 		this.gl.viewport(0, 0, width, height);
+		this.paintCanvas();
 		return ok(this);
 	}
 
