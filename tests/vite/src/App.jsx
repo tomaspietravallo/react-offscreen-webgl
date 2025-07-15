@@ -72,7 +72,7 @@ function SplitShaderURL(props = {}) {
 					manager.updateUniform('u_time', time / 1000);
 					manager.paintCanvas();
 				}}
-				fragmentShader={shaders.BUFFER_0}
+				fragmentShader={[[shaders.BUFFER_0, shaders.BUFFER_1], [shaders.DEFAULT]]}
 			/>
 		</div>
 	);

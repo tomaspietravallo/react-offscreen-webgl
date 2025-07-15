@@ -7,8 +7,8 @@ import { WebGLManagerProxy, WebGLManagerProxyType } from './proxy';
 interface OffscreenWebGLProps {
 	vertexShader?: string;
 	vertexShaderURL?: string;
-	fragmentShader?: string;
-	fragmentShaderURL?: string;
+	fragmentShader?: string | string[][];
+	fragmentShaderURL?: string | string[][];
 	refreshRate?: number; // in FPS, default is 30
 	disableResizeObserver?: boolean;
 
@@ -63,9 +63,19 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 			}
 
 			if (props.fragmentShaderURL) {
-				await proxyRef.current?.setRemoteFragmentShadersAsync(new URL(props.fragmentShaderURL, window.location.origin).toString());
+				if (Array.isArray(props.fragmentShaderURL)) {
+					await proxyRef.current?.setFragmentShaderGroupsAsync(props.fragmentShaderURL);
+				} else {
+					await proxyRef.current?.setRemoteFragmentShadersAsync(
+						new URL(props.fragmentShaderURL, window.location.origin).toString()
+					);
+				}
 			} else {
-				await proxyRef.current?.setFragmentShadersAsync([fragmentShaderText]);
+				if (Array.isArray(fragmentShaderText)) {
+					await proxyRef.current?.setFragmentShaderGroupsAsync(fragmentShaderText);
+				} else {
+					await proxyRef.current?.setFragmentShadersAsync([fragmentShaderText]);
+				}
 			}
 
 			await proxyRef.current?.useProgram();
