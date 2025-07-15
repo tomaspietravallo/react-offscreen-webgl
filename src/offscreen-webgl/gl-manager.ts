@@ -286,8 +286,10 @@ export class WebGLManager {
 
 		this.gl.attachShader(this.program, this.vertexShader!);
 
-		for (const shader of this.fragmentShaders!) {
-			this.gl.attachShader(this.program, shader);
+		if (this.fragmentShaders) {
+			for (const shader of this.fragmentShaders) {
+				this.gl.attachShader(this.program, shader);
+			}
 		}
 
 		this.gl.linkProgram(this.program);
