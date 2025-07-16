@@ -78,8 +78,6 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props: OffscreenWebGLPro
 				}
 			}
 
-			await proxyRef.current?.useProgram();
-
 			await proxyRef.current?.setupWholeScreenQuad();
 
 			await proxyRef.current?.paintCanvas();

@@ -18,7 +18,6 @@ export class WebGLManager {
 	private program: WebGLProgram | null = null;
 	private vertexShader: WebGLShader | null = null;
 	private fragmentShaders: WebGLShader[] | null = null;
-	private uniforms: Record<WebGLUniformName, WebGLUniformLocation | null> = {};
 	private interval: number | null = null;
 
 	private framebuffers: [FrameBufferObject, FrameBufferObject] | null = null;
@@ -27,6 +26,8 @@ export class WebGLManager {
 	private shaderPrograms: WebGLProgram[][] | null = null;
 	private uniformValues: Record<WebGLUniformName, number | number[]> = {};
 	private programUniformStates: Map<WebGLProgram, Record<WebGLUniformName, number | number[]>> = new Map();
+
+	private usesPingPongGroups: boolean = false;
 
 	public constructor(canvas: HTMLCanvasElement) {
 		this.canvas = canvas;
@@ -45,8 +46,7 @@ export class WebGLManager {
 			get: (target, prop, receiver) => {
 				if (prop.toString().endsWith('Async')) {
 					const originalMethod = target[prop.toString().slice(0, -5) as keyof WebGLManager] as (...args: any[]) => any;
-					// @ts-expect-error Target prototype signature
-					return async (...args: any[]) => target[prop.toString().slice(0, -5) as keyof WebGLManager](args);
+					return async (...args: any[]) => originalMethod(args);
 				}
 				return Reflect.get(target, prop, receiver);
 			},
@@ -95,6 +95,7 @@ export class WebGLManager {
 				this.shaderPrograms = null;
 			}
 			this.programUniformStates.clear();
+			this.programLinked = false;
 		} catch (e) {
 			console.error('[OffscreenCanvas @ GLManager] Error during cleanup', e);
 			return err(new Error(`[OffscreenCanvas @ GLManager] Cleanup failed: ${e}`));
@@ -116,26 +117,7 @@ export class WebGLManager {
 	}
 
 	public setFragmentShaders(fragmentShaderSources: string[]): Result<WebGLManager> {
-		const fs = [];
-
-		try {
-			for (const source of fragmentShaderSources) {
-				const { data: fragmentShader, error: fragmentShaderErr } = createShaderFromSource(this.gl, this.gl.FRAGMENT_SHADER, source);
-				if (fragmentShaderErr) {
-					throw err(new Error(`[OffscreenCanvas @ GLManager] Failed to compile Fragment Shader: ${fragmentShaderErr}`));
-				}
-				fs.push(fragmentShader);
-			}
-		} catch (e) {
-			for (const shader of fs) {
-				this.gl.deleteShader(shader);
-			}
-			return err(e as Error);
-		} finally {
-			this.fragmentShaders = fs;
-		}
-
-		return ok(this);
+		return this.setFragmentShaderGroups(fragmentShaderSources.map((source) => [source]));
 	}
 
 	public setRemoteVertexShader(url: string): Promise<Result<WebGLManager>> {
@@ -223,6 +205,11 @@ export class WebGLManager {
 					group.push(fragmentShader);
 					programGroup.push(program);
 				}
+
+				if (group.length > 1) {
+					this.usesPingPongGroups = true;
+				}
+
 				groups.push(group);
 				programGroups.push(programGroup);
 			}
@@ -279,30 +266,10 @@ export class WebGLManager {
 			});
 	}
 
-	public useProgram(): Result<WebGLManager> {
-		if (!this.program) {
-			throw new Error('[OffscreenCanvas @ GLManager] No program available to use');
+	public paintCanvas(): Result<WebGLManager> {
+		if (this.shaderPrograms && this.fragmentShaderGroups) {
+			return this.renderWithFragmentShaderGroups();
 		}
-
-		this.gl.attachShader(this.program, this.vertexShader!);
-
-		if (this.fragmentShaders) {
-			for (const shader of this.fragmentShaders) {
-				this.gl.attachShader(this.program, shader);
-			}
-		}
-
-		this.gl.linkProgram(this.program);
-
-		if (!this.gl.getProgramParameter(this.program, this.gl.LINK_STATUS)) {
-			const error = this.gl.getProgramInfoLog(this.program);
-			this.gl.deleteProgram(this.program);
-			return err(new Error(`[OffscreenCanvas @ GLManager] Program linking failed: ${error}`));
-		}
-
-		this.gl.useProgram(this.program);
-
-		// this.setFrameRate(WebGLManager.DEFAULT_FRAME_RATE);
 
 		return ok(this);
 	}
@@ -324,61 +291,18 @@ export class WebGLManager {
 		}
 	}
 
-	public renderWithFragmentShaders(): Result<WebGLManager> {
-		if (!this.framebuffers || !this.fragmentShaders) {
-			return err(new Error('[OffscreenCanvas @ GLManager] Missing framebuffers or fragment shaders'));
-		}
-
-		let [ping, pong] = this.framebuffers;
-
-		for (let i = 0; i < this.fragmentShaders.length; i++) {
-			const shader = this.fragmentShaders[i];
-			const targetFramebuffer = i === this.fragmentShaders.length - 1 ? null : pong.framebuffer;
-
-			this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, targetFramebuffer);
-			this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-			this.gl.clear(this.gl.COLOR_BUFFER_BIT);
-
-			this.gl.useProgram(this.program!);
-			this.gl.attachShader(this.program!, shader);
-			this.gl.linkProgram(this.program!);
-
-			if (!this.gl.getProgramParameter(this.program!, this.gl.LINK_STATUS)) {
-				const error = this.gl.getProgramInfoLog(this.program!);
-				return err(new Error(`[OffscreenCanvas @ GLManager] Program linking failed: ${error}`));
-			}
-
-			this.gl.bindTexture(this.gl.TEXTURE_2D, ping.texture);
-			this.paintCanvas();
-
-			// Swap ping and pong
-			[ping, pong] = [pong, ping];
-		}
-
-		return ok(this);
-	}
-
-	public paintCanvas(): Result<WebGLManager> {
-		// If using shader groups, render with those instead
-		if (this.shaderPrograms && this.fragmentShaderGroups) {
-			return this.renderWithFragmentShaderGroups();
-		}
-
-		// For single program mode, just draw
-		return this.drawArrays();
-	}
-
 	private drawArrays(): Result<WebGLManager> {
 		this.gl?.drawArrays(this.gl?.TRIANGLE_FAN, 0, 4);
 		return ok(this);
 	}
 
 	public renderWithFragmentShaderGroups(): Result<WebGLManager> {
-		if (!this.framebuffers || !this.fragmentShaderGroups || !this.shaderPrograms) {
+		if (!this.fragmentShaderGroups || !this.shaderPrograms) {
 			return err(new Error('[OffscreenCanvas @ GLManager] Missing framebuffers, fragment shader groups, or programs'));
 		}
 
-		let [ping, pong] = this.framebuffers;
+		// Expect framebuffers to be initialized for subgroups groups >= 2
+		let [ping, pong] = this.framebuffers || [];
 
 		for (let groupIndex = 0; groupIndex < this.fragmentShaderGroups.length; groupIndex++) {
 			const group = this.fragmentShaderGroups[groupIndex];
@@ -397,9 +321,9 @@ export class WebGLManager {
 				if (isLastGroup && isLastShaderInGroup) {
 					targetFramebuffer = null; // Render to canvas
 				} else if (isLastShaderInGroup) {
-					targetFramebuffer = pong.framebuffer; // Prepare output for next group
+					targetFramebuffer = pong?.framebuffer || null; // Prepare output for next group
 				} else {
-					targetFramebuffer = pong.framebuffer; // Ping-pong within group
+					targetFramebuffer = pong?.framebuffer || null; // Ping-pong within group
 				}
 
 				this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, targetFramebuffer);
@@ -408,7 +332,7 @@ export class WebGLManager {
 
 				this.gl.useProgram(program);
 				this.setUniformsForProgram(program, isFirstRender);
-				this.gl.bindTexture(this.gl.TEXTURE_2D, ping.texture);
+				this.gl.bindTexture(this.gl.TEXTURE_2D, ping?.texture || null);
 				this.drawArrays();
 
 				// Swap ping and pong for next iteration
@@ -423,6 +347,7 @@ export class WebGLManager {
 		this.canvas.width = width;
 		this.canvas.height = height;
 		this.gl.viewport(0, 0, width, height);
+		if (!this.usesPingPongGroups) return ok(this);
 		this.setupPingPongBuffers(width, height);
 		this.paintCanvas();
 		return ok(this);
@@ -471,35 +396,7 @@ export class WebGLManager {
 	}
 
 	public updateUniform(uniform: WebGLUniformName, value: number | number[]): Result<WebGLManager> {
-		// Store the uniform value for shader groups
 		this.uniformValues[uniform] = Array.isArray(value) ? [...value] : value;
-
-		// If using shader groups, don't set uniforms immediately
-		if (this.shaderPrograms) {
-			return ok(this);
-		}
-
-		// For single program mode, set the uniform immediately
-		if (!this.program) {
-			return err(new Error('[OffscreenCanvas @ GLManager] No program available to update uniform'));
-		}
-
-		if (!this.uniforms[uniform]) {
-			const location = this.gl.getUniformLocation(this.program, uniform);
-
-			if (!location) {
-				return err(new Error(`[OffscreenCanvas @ GLManager] Uniform ${uniform} not found`));
-			} else {
-				this.uniforms[uniform] = location;
-			}
-		}
-
-		if (Array.isArray(value)) {
-			setFloatUniforms(this.gl, this.uniforms[uniform], ...value);
-		} else {
-			setFloatUniforms(this.gl, this.uniforms[uniform], value);
-		}
-
 		return ok(this);
 	}
 

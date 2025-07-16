@@ -57,7 +57,7 @@ function SplitShaderURL(props = {}) {
 			});
 	}, [props.url]);
 
-	if (loading) {
+	if (loading || !shaders.BUFFER_0 || !shaders.BUFFER_1 || !shaders.DEFAULT) {
 		return <div>Loading shader...</div>;
 	}
 
