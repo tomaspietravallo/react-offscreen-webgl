@@ -206,13 +206,13 @@ export class WebGLManager {
 					programGroup.push(program);
 				}
 
-				if (group.length > 1) {
-					this.usesPingPongGroups = true;
-				}
+				this.usesPingPongGroups = this.usesPingPongGroups || group.length > 1;
 
 				groups.push(group);
 				programGroups.push(programGroup);
 			}
+
+			this.usesPingPongGroups = this.usesPingPongGroups || fragmentShaderGroupSources.length > 1;
 		} catch (e) {
 			for (const group of groups) {
 				for (const shader of group) {
