@@ -347,8 +347,9 @@ export class WebGLManager {
 		this.canvas.width = width;
 		this.canvas.height = height;
 		this.gl.viewport(0, 0, width, height);
-		if (!this.usesPingPongGroups) return ok(this);
-		this.setupPingPongBuffers(width, height);
+		if (this.usesPingPongGroups) {
+			this.setupPingPongBuffers(width, height);
+		}
 		this.paintCanvas();
 		return ok(this);
 	}
