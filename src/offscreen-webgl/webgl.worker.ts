@@ -20,6 +20,13 @@ export type WorkerMessages =
 			type: WorkerMessageType.INIT;
 			canvas: OffscreenCanvas;
 			async?: boolean;
+			isolate: boolean;
+	  }
+	| {
+			proxyId: string;
+			type: WorkerMessageType.INIT;
+			async?: boolean;
+			isolate: false;
 	  }
 	| { type: WorkerMessageType.PAUSE; proxyId: string; async?: boolean }
 	| { type: WorkerMessageType.RESUME; proxyId: string; async?: boolean }
@@ -29,6 +36,7 @@ export type WorkerMessages =
 	| { type: WorkerMessageType.EVAL_FN; proxyId: string; key: string; id: string; fn: string; onEachFrame?: boolean; async?: boolean };
 
 let glManagers: Record<string, WebGLManager> = {};
+let sharedCanvas: HTMLCanvasElement | undefined | null = null;
 
 addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 	const { data } = event as {
@@ -48,7 +56,7 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 	if (data.type != WorkerMessageType.INIT && !glManagers[data.proxyId]) {
 		postMessage({
 			type: WorkerMessageType.ERROR,
-			error: `[OffscreenWebGLWorker, ${WORKER_ID}] WebGLManager not initialized for proxyId: ${data.proxyId}`,
+			error: `[OffscreenWebGLWorker, ${WORKER_ID}] WebGLManager not initialized for proxyId: ${data.proxyId}. ${JSON.stringify(data)}`,
 		});
 		return;
 	}
@@ -56,10 +64,12 @@ addEventListener('message', async (event: MessageEvent<WorkerMessages>) => {
 	try {
 		switch (data.type) {
 			case WorkerMessageType.INIT: {
-				const { canvas } = data;
-				// 👇 note canvas is an OffscreenCanvas instance
-				let m = WebGLManager.fromHTMLCanvasElement(canvas as unknown as HTMLCanvasElement);
-
+				const { isolate } = data;
+				// 👇 note canvas is actually an OffscreenCanvas instance
+				let canvas = (data as any).canvas as HTMLCanvasElement | null | undefined;
+				if (!isolate && !sharedCanvas) sharedCanvas = canvas;
+				if (!isolate && !canvas) canvas = sharedCanvas;
+				let m = WebGLManager.fromHTMLCanvasElement(canvas as unknown as HTMLCanvasElement, !isolate && !!sharedCanvas);
 				if (m.error) {
 					console.error(`[OffscreenWebGLWorker, ${WORKER_ID}] Error creating WebGLManager:`, m.error);
 					postMessage({ type: WorkerMessageType.ERROR, error: m.error.message });

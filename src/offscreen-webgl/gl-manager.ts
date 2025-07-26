@@ -1,6 +1,5 @@
 import { err, ok, Result } from '../utils/try-catch';
 import { createShaderFromSource, createWholeScreenQuad, setFloatUniforms } from '../utils/webgl';
-import { WorkerMessages } from './webgl.worker';
 
 export type WebGLUniformName = `u_${string}`;
 
@@ -28,10 +27,23 @@ export class WebGLManager {
 	private programUniformStates: Map<WebGLProgram, Record<WebGLUniformName, number | number[]>> = new Map();
 
 	private usesPingPongGroups: boolean = false;
+	private isUsingSharedCanvas: boolean = false;
+	private sharedCanvasCrop: { x: number; y: number; width: number; height: number } | null = null;
+	private static sharedCanvas: HTMLCanvasElement | undefined | null = null;
 
-	public constructor(canvas: HTMLCanvasElement) {
+	public setSharedCanvasCrop(crop: { x: number; y: number; width: number; height: number } | null) {
+		this.sharedCanvasCrop = crop;
+	}
+
+	public constructor(canvas: HTMLCanvasElement, sharedCanvas?: boolean) {
 		this.canvas = canvas;
-		this.gl = this.canvas.getContext('webgl')! as WebGLRenderingContext;
+		this.isUsingSharedCanvas = !!sharedCanvas;
+
+		if (this.isUsingSharedCanvas && !WebGLManager.sharedCanvas) {
+			WebGLManager.sharedCanvas = canvas;
+		}
+
+		this.gl = (this.isUsingSharedCanvas ? WebGLManager.sharedCanvas! : this.canvas).getContext('webgl')! as WebGLRenderingContext;
 
 		if (!this.gl) {
 			throw new Error('[OffscreenCanvas @ GLManager] WebGL not supported');
@@ -53,9 +65,9 @@ export class WebGLManager {
 		});
 	}
 
-	static fromHTMLCanvasElement(canvas: HTMLCanvasElement): Result<WebGLManager> {
+	static fromHTMLCanvasElement(canvas: HTMLCanvasElement, sharedCanvas?: boolean): Result<WebGLManager> {
 		try {
-			return ok(new WebGLManager(canvas));
+			return ok(new WebGLManager(canvas, sharedCanvas));
 		} catch (e) {
 			console.error('[OffscreenCanvas @ GLManager] Error creating GLManager from HTMLCanvasElement', e);
 			return err(e as Error);
@@ -95,7 +107,6 @@ export class WebGLManager {
 				this.shaderPrograms = null;
 			}
 			this.programUniformStates.clear();
-			this.programLinked = false;
 		} catch (e) {
 			console.error('[OffscreenCanvas @ GLManager] Error during cleanup', e);
 			return err(new Error(`[OffscreenCanvas @ GLManager] Cleanup failed: ${e}`));
@@ -301,6 +312,8 @@ export class WebGLManager {
 			return err(new Error('[OffscreenCanvas @ GLManager] Missing framebuffers, fragment shader groups, or programs'));
 		}
 
+		this.frame == 0 && this.gl.enable(this.gl.SCISSOR_TEST);
+
 		// Expect framebuffers to be initialized for subgroups groups >= 2
 		let [ping, pong] = this.framebuffers || [];
 
@@ -326,8 +339,13 @@ export class WebGLManager {
 					targetFramebuffer = pong?.framebuffer || null; // Ping-pong within group
 				}
 
-				this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, targetFramebuffer);
-				this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+				if (this.isUsingSharedCanvas) {
+					this.cropSharedCanvas();
+				} else {
+					this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+				}
+
+				this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
 				this.gl.clear(this.gl.COLOR_BUFFER_BIT);
 
 				this.gl.useProgram(program);
@@ -343,10 +361,19 @@ export class WebGLManager {
 		return ok(this);
 	}
 
+	private cropSharedCanvas() {
+		if (this.sharedCanvasCrop) {
+			this.gl.scissor(this.sharedCanvasCrop.x, this.sharedCanvasCrop.y, this.sharedCanvasCrop.width, this.sharedCanvasCrop.height);
+			this.gl.viewport(this.sharedCanvasCrop.x, this.sharedCanvasCrop.y, this.sharedCanvasCrop.width, this.sharedCanvasCrop.height);
+		}
+	}
+
 	public resize(width: number, height: number): Result<WebGLManager> {
-		this.canvas.width = width;
-		this.canvas.height = height;
-		this.gl.viewport(0, 0, width, height);
+		if (!this.isUsingSharedCanvas) {
+			this.canvas.width = width;
+			this.canvas.height = height;
+			this.gl.viewport(0, 0, width, height);
+		}
 		if (this.usesPingPongGroups) {
 			this.setupPingPongBuffers(width, height);
 		}

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { WebGLManager, WebGLUniformName, RunOnWorkerContextFn } from './gl-manager';
 import { WebGLManagerProxy, WebGLManagerProxyType } from './proxy';
 import { DEFAULT_FS_SHADER, DEFAULT_VS_SHADER } from '../defaults';
+import { useSharedCanvasLayer } from './shared-canvas';
 
 interface UseOffscreenWebGLOptions {
 	vertexShader?: string;
@@ -12,6 +13,7 @@ interface UseOffscreenWebGLOptions {
 	disableResizeObserver?: boolean;
 	uniforms?: Record<WebGLUniformName, number | number[]>;
 	functions?: Record<string, RunOnWorkerContextFn>;
+	isolate?: boolean;
 }
 
 interface UseOffscreenWebGLState {
@@ -30,7 +32,10 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		disableResizeObserver = false,
 		uniforms = {},
 		functions = {},
+		isolate = false,
 	} = options;
+
+	const sharedCanvas = useSharedCanvasLayer(isolate);
 
 	const [state, setState] = useState<UseOffscreenWebGLState>({
 		isLoading: false,
@@ -61,7 +66,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 		const initializeWebGL = async () => {
 			try {
-				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
+				const proxy = new WebGLManagerProxy(canvas, sharedCanvas) as any as WebGLManagerProxyType;
 				proxyRef.current = proxy;
 
 				if (options.vertexShaderURL) {
@@ -162,9 +167,18 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 		try {
 			const observer = new ResizeObserver(() => {
+				const boundingBox = canvas.getBoundingClientRect();
 				if (disableResizeObserver || !proxyRef.current) return;
 
 				proxyRef.current.resize(canvas.width, canvas.height);
+				if (boundingBox && !isolate) {
+					proxyRef.current.setSharedCanvasCrop({
+						x: Math.round(boundingBox.x),
+						y: Math.round((sharedCanvas?.clientHeight || window.innerHeight) - boundingBox.bottom - 1),
+						width: Math.round(canvas.width),
+						height: Math.round(canvas.height),
+					});
+				}
 				proxyRef.current.updateUniform('u_resolution', [canvas.width, canvas.height]);
 			});
 

@@ -10,13 +10,15 @@ interface OffscreenWebGLProps {
 	fragmentShaderURL?: string | string[][];
 	refreshRate?: number;
 	disableResizeObserver?: boolean;
+	isolate?: boolean;
 
 	[key: WebGLUniformName]: number | number[];
 	[key: RunOnWorkerContextFnName]: RunOnWorkerContextFn<any>;
 }
 
 export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props) => {
-	const { vertexShader, vertexShaderURL, fragmentShader, fragmentShaderURL, refreshRate, disableResizeObserver, ...rest } = props;
+	const { vertexShader, vertexShaderURL, fragmentShader, fragmentShaderURL, refreshRate, disableResizeObserver, isolate, ...rest } =
+		props;
 
 	const CANVAS_ID = useRef(`OffscreenWebGLCanvas-${uuidv4()}`);
 	const [canvas, setCanvas] = useState<HTMLCanvasElement>();
@@ -45,6 +47,7 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props) => {
 		disableResizeObserver,
 		uniforms,
 		functions,
+		isolate,
 	});
 
 	if (hasError) {

@@ -28,24 +28,45 @@ class WebGLManagerProxyClass {
 		{} as Record<string, string>
 	);
 
-	constructor(canvas: HTMLCanvasElement) {
+	constructor(canvas: HTMLCanvasElement, sharedCanvas?: HTMLCanvasElement | null) {
 		if (!WebGLManagerProxyClass.worker) {
 			WebGLManagerProxyClass.worker = new WebWorker();
 			WebGLManagerProxyClass.worker.onmessage = WebGLManagerProxyClass.handleMessage.bind(this);
-		}
 
-		const offscreenCanvas = canvas.transferControlToOffscreen()!;
-
-		WebGLManagerProxyClass.worker.postMessage(
-			{
-				type: 'INIT',
-				canvas: offscreenCanvas,
-				proxyId: this.PROXY_ID,
-			} as WorkerMessages,
-			{
-				transfer: [offscreenCanvas],
+			const offscreenCanvas = (sharedCanvas ? sharedCanvas : canvas).transferControlToOffscreen();
+			WebGLManagerProxyClass.worker.postMessage(
+				{
+					type: WorkerMessageType.INIT,
+					canvas: offscreenCanvas,
+					proxyId: this.PROXY_ID,
+					isolate: sharedCanvas ? false : true,
+				} as WorkerMessages,
+				[offscreenCanvas]
+			);
+		} else {
+			if (sharedCanvas) {
+				// Use shared canvas (should already be initialized)
+				WebGLManagerProxyClass.worker.postMessage({
+					type: 'INIT',
+					proxyId: this.PROXY_ID,
+					isolate: false,
+				} as WorkerMessages);
+			} else {
+				// Transfer control to offscreen canvas, initialize as an isolated canvas/program.
+				const offscreenCanvas = canvas.transferControlToOffscreen()!;
+				WebGLManagerProxyClass.worker.postMessage(
+					{
+						type: 'INIT',
+						canvas: offscreenCanvas,
+						proxyId: this.PROXY_ID,
+						isolate: true,
+					} as WorkerMessages,
+					{
+						transfer: [offscreenCanvas],
+					}
+				);
 			}
-		);
+		}
 
 		return WebGLManagerProxyClass.wrapThisPrototype(this);
 	}
@@ -159,5 +180,5 @@ class WebGLManagerProxyClass {
 }
 
 export const WebGLManagerProxy = WebGLManagerProxyClass as unknown as {
-	new (worker: HTMLCanvasElement): WebGLManagerProxyType;
+	new (worker: HTMLCanvasElement, sharedCanvas?: HTMLCanvasElement | null): WebGLManagerProxyType;
 };
