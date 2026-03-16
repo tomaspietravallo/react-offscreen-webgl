@@ -1,6 +1,5 @@
 import { err, ok, Result } from '../utils/try-catch';
 import { createShaderFromSource, createWholeScreenQuad, setFloatUniforms } from '../utils/webgl';
-import { WorkerMessages } from './webgl.worker';
 
 export type WebGLUniformName = `u_${string}`;
 
@@ -28,6 +27,7 @@ export class WebGLManager {
 	private programUniformStates: Map<WebGLProgram, Record<WebGLUniformName, number | number[]>> = new Map();
 
 	private usesPingPongGroups: boolean = false;
+	private programLinked: boolean = false;
 
 	public constructor(canvas: HTMLCanvasElement) {
 		this.canvas = canvas;
@@ -230,6 +230,7 @@ export class WebGLManager {
 			this.shaderPrograms = programGroups;
 		}
 
+		this.programLinked = true;
 		return ok(this);
 	}
 
@@ -404,6 +405,9 @@ export class WebGLManager {
 	public checkWebGLVitals(): Result<WebGLManager> {
 		if (!this.gl) {
 			return err(new Error('[OffscreenCanvas @ GLManager] WebGL context not available'));
+		}
+		if (!this.programLinked) {
+			return err(new Error('[OffscreenCanvas @ GLManager] No shader program linked'));
 		}
 		const e = this.gl.getError();
 		if (e == this.gl.NO_ERROR) {

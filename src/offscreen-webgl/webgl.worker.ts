@@ -1,6 +1,6 @@
 import { ok } from '../utils/try-catch';
 import { uuidv4 } from '../utils/uuid';
-import { RunOnWorkerContextFn, WebGLManager } from './gl-manager';
+import { WebGLManager } from './gl-manager';
 
 export const WORKER_ID = `OffscreenWebGLWorker-${uuidv4()}`;
 

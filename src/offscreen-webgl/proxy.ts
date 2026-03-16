@@ -1,5 +1,5 @@
 import { uuidv4 } from '../utils/uuid';
-import { RunOnWorkerContextFn, WebGLManager, WebGLUniformName } from './gl-manager';
+import { RunOnWorkerContextFn, WebGLManager } from './gl-manager';
 import { WorkerMessageType, WorkerMessages } from './webgl.worker';
 import WebWorker from '../offscreen-webgl/webgl.worker?worker';
 

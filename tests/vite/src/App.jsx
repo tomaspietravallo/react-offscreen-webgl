@@ -93,10 +93,13 @@ function App() {
 				}}
 			>
 				<h1>Testing / Development environment</h1>
-				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(1, 1fr)', gap: '20px' }}>
-					<OffscreenWebGLContainer fragmentShaderURL={'default.glsl'} />
-					<OffscreenWebGLContainer fragmentShaderURL={'default-blue-1.glsl'} />
-					<SplitShaderURL url={'moving-circle.glsl'} />
+				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(3, 1fr)', gap: '20px' }}>
+					<OffscreenWebGLContainer fragmentShaderURL={'default.glsl'} isolate={false} />
+					<OffscreenWebGLContainer fragmentShaderURL={'default-blue-1.glsl'} isolate={true} />
+					<SplitShaderURL url={'moving-circle.glsl'} isolate={true} />
+					{/* <OffscreenWebGLContainer fragmentShaderURL={'default.glsl'} isolate={true} /> */}
+					{/* <OffscreenWebGLContainer fragmentShaderURL={'default-blue-1.glsl'} /> */}
+					{/* <OffscreenWebGLContainer fragmentShaderURL={'default-blue-1.glsl'} isolate={true} /> */}
 				</div>
 			</header>
 		</div>
