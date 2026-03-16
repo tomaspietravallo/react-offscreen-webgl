@@ -3,7 +3,7 @@
 Render WebGL fragment shaders inside React components using `OffscreenCanvas` and a Web Worker, keeping the render loop off the main thread.
 
 > [!WARNING]
-> This project is alpha software under active development. The API may change before a stable release.
+> This project is alpha software under development. The API may change before a stable release.
 
 ---
 
