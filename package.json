@@ -1,6 +1,6 @@
 {
 	"name": "react-offscreen-webgl",
-	"version": "0.0.1-alpha",
+	"version": "0.0.2-alpha",
 	"description": "Render WebGL shaders in React using OffscreenCanvas and a Web Worker",
 	"exports": {
 		"import": "./dist/index.es.js",
