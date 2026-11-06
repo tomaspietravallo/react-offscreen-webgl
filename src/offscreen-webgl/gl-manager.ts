@@ -14,6 +14,10 @@ export class WebGLManager {
 	private onEachFrameFunctions: Record<string, RunOnWorkerContextFn> = {};
 	private canvas: HTMLCanvasElement;
 	private gl: WebGLRenderingContext;
+	private width: number;
+	private height: number;
+	private onPaint?: () => void;
+	private quadBuffers = new Map<WebGLProgram, WebGLBuffer>();
 	private program: WebGLProgram | null = null;
 	private vertexShader: WebGLShader | null = null;
 	private fragmentShaders: WebGLShader[] | null = null;
@@ -29,8 +33,11 @@ export class WebGLManager {
 	private usesPingPongGroups: boolean = false;
 	private programLinked: boolean = false;
 
-	public constructor(canvas: HTMLCanvasElement) {
+	public constructor(canvas: HTMLCanvasElement, width = canvas.width, height = canvas.height, onPaint?: () => void) {
 		this.canvas = canvas;
+		this.width = width;
+		this.height = height;
+		this.onPaint = onPaint;
 		this.gl = this.canvas.getContext('webgl')! as WebGLRenderingContext;
 
 		if (!this.gl) {
@@ -53,9 +60,14 @@ export class WebGLManager {
 		});
 	}
 
-	static fromHTMLCanvasElement(canvas: HTMLCanvasElement): Result<WebGLManager> {
+	static fromHTMLCanvasElement(
+		canvas: HTMLCanvasElement,
+		width = canvas.width,
+		height = canvas.height,
+		onPaint?: () => void
+	): Result<WebGLManager> {
 		try {
-			return ok(new WebGLManager(canvas));
+			return ok(new WebGLManager(canvas, width, height, onPaint));
 		} catch (e) {
 			console.error('[OffscreenCanvas @ GLManager] Error creating GLManager from HTMLCanvasElement', e);
 			return err(e as Error);
@@ -69,14 +81,6 @@ export class WebGLManager {
 		}
 		try {
 			if (this.program) {
-				if (this.vertexShader) {
-					this.gl.detachShader(this.program, this.vertexShader);
-				}
-				if (this.fragmentShaders) {
-					for (const shader of this.fragmentShaders) {
-						this.gl.detachShader(this.program, shader);
-					}
-				}
 				this.gl.deleteProgram(this.program);
 				this.program = null;
 			}
@@ -98,6 +102,13 @@ export class WebGLManager {
 				}
 				this.shaderPrograms = null;
 			}
+			for (const group of this.fragmentShaderGroups || []) {
+				for (const shader of group) this.gl.deleteShader(shader);
+			}
+			this.quadBuffers.forEach((buffer) => this.gl.deleteBuffer(buffer));
+			this.quadBuffers.clear();
+			for (const fbo of this.framebuffers || []) fbo.destroy();
+			this.framebuffers = null;
 			this.programUniformStates.clear();
 			this.programLinked = false;
 		} catch (e) {
@@ -173,67 +184,46 @@ export class WebGLManager {
 	}
 
 	public setFragmentShaderGroups(fragmentShaderGroupSources: string[][]): Result<WebGLManager> {
-		const groups = [];
-		const programGroups = [];
-
-		try {
-			for (const groupSources of fragmentShaderGroupSources) {
-				const group = [];
-				const programGroup = [];
-				for (const source of groupSources) {
-					const { data: fragmentShader, error: fragmentShaderErr } = createShaderFromSource(
-						this.gl,
-						this.gl.FRAGMENT_SHADER,
-						source
-					);
-					if (fragmentShaderErr) {
-						throw new Error(`[OffscreenCanvas @ GLManager] Failed to compile Fragment Shader: ${fragmentShaderErr}`);
-					}
-
-					// Create a program for each shader
-					const program = this.gl.createProgram();
-					if (!program) {
-						throw new Error('[OffscreenCanvas @ GLManager] Failed to create WebGL program');
-					}
-
-					this.gl.attachShader(program, this.vertexShader!);
-					this.gl.attachShader(program, fragmentShader);
-					this.gl.linkProgram(program);
-
-					if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
-						const error = this.gl.getProgramInfoLog(program);
-						this.gl.deleteProgram(program);
-						throw new Error(`[OffscreenCanvas @ GLManager] Program linking failed: ${error}`);
-					}
-
-					group.push(fragmentShader);
-					programGroup.push(program);
-				}
-
-				this.usesPingPongGroups = this.usesPingPongGroups || group.length > 1;
-
-				groups.push(group);
-				programGroups.push(programGroup);
-			}
-
-			this.usesPingPongGroups = this.usesPingPongGroups || fragmentShaderGroupSources.length > 1;
-		} catch (e) {
-			for (const group of groups) {
-				for (const shader of group) {
-					this.gl.deleteShader(shader);
-				}
-			}
-			for (const programGroup of programGroups) {
-				for (const program of programGroup) {
-					this.gl.deleteProgram(program);
-				}
-			}
-			return err(e as Error);
-		} finally {
-			this.fragmentShaderGroups = groups;
-			this.shaderPrograms = programGroups;
+		if (!this.vertexShader) return err(new Error('[OffscreenCanvas @ GLManager] Vertex shader is required'));
+		if (!fragmentShaderGroupSources.length || fragmentShaderGroupSources.some((group) => !group.length)) {
+			return err(new Error('[OffscreenCanvas @ GLManager] Shader groups cannot be empty'));
 		}
-
+		const groups: WebGLShader[][] = [];
+		const programGroups: WebGLProgram[][] = [];
+		try {
+			for (const sources of fragmentShaderGroupSources) {
+				const shaders: WebGLShader[] = [];
+				const programs: WebGLProgram[] = [];
+				groups.push(shaders);
+				programGroups.push(programs);
+				for (const source of sources) {
+					const result = createShaderFromSource(this.gl, this.gl.FRAGMENT_SHADER, source);
+					if (result.error) throw new Error(`[OffscreenCanvas @ GLManager] Failed to compile Fragment Shader: ${result.error}`);
+					shaders.push(result.data);
+					const program = this.gl.createProgram();
+					if (!program) throw new Error('[OffscreenCanvas @ GLManager] Failed to create WebGL program');
+					programs.push(program);
+					this.gl.attachShader(program, this.vertexShader);
+					this.gl.attachShader(program, result.data);
+					this.gl.linkProgram(program);
+					if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
+						throw new Error(`[OffscreenCanvas @ GLManager] Program linking failed: ${this.gl.getProgramInfoLog(program)}`);
+					}
+				}
+			}
+		} catch (error) {
+			for (const group of groups) for (const shader of group) this.gl.deleteShader(shader);
+			for (const group of programGroups) for (const program of group) this.gl.deleteProgram(program);
+			return err(error instanceof Error ? error : new Error(String(error)));
+		}
+		for (const group of this.fragmentShaderGroups || []) for (const shader of group) this.gl.deleteShader(shader);
+		for (const group of this.shaderPrograms || []) for (const program of group) this.gl.deleteProgram(program);
+		this.quadBuffers.forEach((buffer) => this.gl.deleteBuffer(buffer));
+		this.quadBuffers.clear();
+		this.programUniformStates.clear();
+		this.fragmentShaderGroups = groups;
+		this.shaderPrograms = programGroups;
+		this.usesPingPongGroups = fragmentShaderGroupSources.length > 1 || fragmentShaderGroupSources.some((group) => group.length > 1);
 		this.programLinked = true;
 		return ok(this);
 	}
@@ -273,7 +263,11 @@ export class WebGLManager {
 
 	public paintCanvas(): Result<WebGLManager> {
 		if (this.shaderPrograms && this.fragmentShaderGroups) {
-			return this.renderWithFragmentShaderGroups();
+			if (this.canvas.width !== this.width) this.canvas.width = this.width;
+			if (this.canvas.height !== this.height) this.canvas.height = this.height;
+			const result = this.renderWithFragmentShaderGroups();
+			if (!result.error) this.onPaint?.();
+			return result;
 		}
 
 		return ok(this);
@@ -332,10 +326,19 @@ export class WebGLManager {
 				}
 
 				this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, targetFramebuffer);
-				this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+				this.gl.disable(this.gl.SCISSOR_TEST);
+				this.gl.viewport(0, 0, this.width, this.height);
 				this.gl.clear(this.gl.COLOR_BUFFER_BIT);
 
 				this.gl.useProgram(program);
+				const buffer = this.quadBuffers.get(program);
+				if (buffer) {
+					const position = this.gl.getAttribLocation(program, 'v_position');
+					this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
+					this.gl.vertexAttribPointer(position, 3, this.gl.FLOAT, false, 0, 0);
+					this.gl.enableVertexAttribArray(position);
+				}
+				this.gl.activeTexture(this.gl.TEXTURE0);
 				this.setUniformsForProgram(program, isFirstRender);
 				this.gl.bindTexture(this.gl.TEXTURE_2D, ping?.texture || null);
 				this.drawArrays();
@@ -349,14 +352,13 @@ export class WebGLManager {
 	}
 
 	public resize(width: number, height: number): Result<WebGLManager> {
-		this.canvas.width = width;
-		this.canvas.height = height;
-		this.gl.viewport(0, 0, width, height);
+		this.width = width;
+		this.height = height;
 		if (this.usesPingPongGroups) {
-			this.setupPingPongBuffers(width, height);
+			const result = this.setupPingPongBuffers(width, height);
+			if (result.error) return result;
 		}
-		this.paintCanvas();
-		return ok(this);
+		return this.paintCanvas();
 	}
 
 	public setupWholeScreenQuad(): Result<WebGLBuffer> {
@@ -371,6 +373,7 @@ export class WebGLManager {
 			for (const programGroup of this.shaderPrograms) {
 				for (const program of programGroup) {
 					const buffer = createWholeScreenQuad(this.gl, program);
+					this.quadBuffers.set(program, buffer);
 					buffers.push(buffer);
 				}
 			}
@@ -513,6 +516,11 @@ class FrameBufferObject {
 		this.height = height;
 		this.setupTexture();
 		this.setupFramebuffer();
+	}
+
+	public destroy(): void {
+		this.gl.deleteFramebuffer(this.framebuffer);
+		this.gl.deleteTexture(this.texture);
 	}
 
 	public bind(): void {
