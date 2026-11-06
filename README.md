@@ -11,26 +11,27 @@ Render WebGL fragment shaders inside React components using `OffscreenCanvas` an
 
 `react-offscreen-webgl` exposes a single `<OffscreenWebGL>` component. Under the hood:
 
-1. The component creates an `HTMLCanvasElement` in the DOM.
-2. It transfers control of that canvas to an `OffscreenCanvas` running in a dedicated Web Worker.
-3. A `WebGLManager` inside the worker compiles your shaders, manages uniforms, and drives the render loop via `setInterval`.
-4. Communication between the React component and the worker happens through a structured proxy (`WebGLManagerProxy`) that serialises method calls over `postMessage`.
+1. Each component creates a canvas in the DOM.
+2. A shared Web Worker renders each component using one WebGL context on an `OffscreenCanvas`.
+3. The worker transfers rendered frames as `ImageBitmap`s to their component canvases. Each component has its own shaders, uniforms, frame rate, and multipass buffers.
+4. A proxy serialises each component's method calls over `postMessage`.
 
 Because the render loop runs in the worker, expensive shader work does not block the main-thread event loop.
 
-Each component currently creates its own WebGL context. Browsers limit the number of active contexts; sharing a context is tracked in [issue #10](https://github.com/tomaspietravallo/react-offscreen-webgl/issues/10).
+Rendering each component at the origin of the shared drawing buffer preserves local `gl_FragCoord` coordinates and lets normal canvas layout and CSS clipping apply. Frames are copied to each canvas, so sharing a context adds image transfer and memory costs.
 
 ---
 
 ## Browser requirements
 
-| Feature           | MDN link                                                                |
-| ----------------- | ----------------------------------------------------------------------- |
-| `OffscreenCanvas` | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas) |
-| Web Workers       | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Worker)          |
-| WebGL             | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API)       |
+| Feature               | MDN link                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| `OffscreenCanvas`     | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas)             |
+| Web Workers           | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Worker)                      |
+| ImageBitmap rendering | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/ImageBitmapRenderingContext) |
+| WebGL                 | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API)                   |
 
-All three features are required. Server-side rendering is not supported — see [Known limitations](#known-limitations).
+All listed features are required. Server-side rendering is not supported — see [Known limitations](#known-limitations).
 
 ---
 
@@ -155,6 +156,7 @@ The same nested array shape is accepted by `fragmentShaderURL`:
 
 - **No SSR support.** The component calls `document.createElement`, `window`, and Web Worker APIs. Wrap it in a dynamic import with `{ ssr: false }` (Next.js) or similar guard for server-rendered frameworks.
 - **OffscreenCanvas required.** Safari support landed in Safari 17.4 (March 2024). Older browsers are not supported.
+- **Shared WebGL state.** Worker callbacks can access the shared context directly. Changes to WebGL state made by one callback may affect other components; restore any state you change.
 - **No media / camera input.** Passing video frames or `ImageBitmap` as textures is not yet implemented.
 - **Function serialisation.** `f_each_*` callbacks are stringified and `eval`-ed in the worker. Arrow functions with outer-scope references will not work as expected.
 - **Single vertex shader.** All passes share the built-in passthrough vertex shader unless `vertexShader` / `vertexShaderURL` is provided.
