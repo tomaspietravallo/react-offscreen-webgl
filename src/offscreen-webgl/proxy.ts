@@ -15,6 +15,7 @@ export type WebGLManagerProxyType = WebGLManagerProxyClass & MappedManagerFuncti
 class WebGLManagerProxyClass {
 	private static worker: Worker | null = null;
 	private static workerFailure: Error | null = null;
+	private static outputs = new Map<string, ImageBitmapRenderingContext>();
 	private static pendingResponses: Record<string, { resolve: (value: any) => void; reject: (error: Error) => void }> = {};
 	private readonly PROXY_ID = `WebGLManagerProxy-${uuidv4()}`;
 
@@ -41,18 +42,15 @@ class WebGLManagerProxyClass {
 			};
 		}
 
-		const offscreenCanvas = canvas.transferControlToOffscreen()!;
-
-		WebGLManagerProxyClass.worker.postMessage(
-			{
-				type: 'INIT',
-				canvas: offscreenCanvas,
-				proxyId: this.PROXY_ID,
-			} as WorkerMessages,
-			{
-				transfer: [offscreenCanvas],
-			}
-		);
+		const output = canvas.getContext('bitmaprenderer');
+		if (!output) throw new Error('ImageBitmap rendering is not supported');
+		WebGLManagerProxyClass.outputs.set(this.PROXY_ID, output);
+		WebGLManagerProxyClass.worker.postMessage({
+			type: WorkerMessageType.INIT,
+			width: canvas.width,
+			height: canvas.height,
+			proxyId: this.PROXY_ID,
+		} satisfies WorkerMessages);
 
 		return WebGLManagerProxyClass.wrapThisPrototype(this);
 	}
@@ -81,7 +79,13 @@ class WebGLManagerProxyClass {
 
 	private static handleMessage(event: MessageEvent<WorkerMessages>) {
 		const { data } = event;
-		if (data.type === WorkerMessageType.RESPONSE) {
+		if (data.type === WorkerMessageType.FRAME) {
+			const output = WebGLManagerProxyClass.outputs.get(data.proxyId);
+			if (output && output.canvas.width === data.bitmap.width && output.canvas.height === data.bitmap.height) {
+				output.transferFromImageBitmap(data.bitmap);
+			} else data.bitmap.close();
+			WebGLManagerProxyClass.worker?.postMessage({ type: WorkerMessageType.FRAME_ACK, proxyId: data.proxyId });
+		} else if (data.type === WorkerMessageType.RESPONSE) {
 			const { id, result, error } = data;
 			if (WebGLManagerProxyClass.pendingResponses[id]) {
 				error
@@ -104,6 +108,7 @@ class WebGLManagerProxyClass {
 
 	public callMethod<ManagerMethod extends keyof WebGLManager>(method: ManagerMethod, ...args: any[]): void {
 		const id = uuidv4();
+		if (method === 'destroy') WebGLManagerProxyClass.outputs.delete(this.PROXY_ID);
 		WebGLManagerProxyClass.worker?.postMessage({
 			type: WorkerMessageType.CALL_METHOD,
 			proxyId: this.PROXY_ID,
@@ -119,6 +124,7 @@ class WebGLManagerProxyClass {
 		...args: any[]
 	): Promise<ReturnType<WebGLManager[ManagerMethod] extends (...args: any) => any ? WebGLManager[ManagerMethod] : never>> {
 		const id = uuidv4();
+		if (method === 'destroy') WebGLManagerProxyClass.outputs.delete(this.PROXY_ID);
 
 		return this.request(id, {
 			type: WorkerMessageType.CALL_METHOD,

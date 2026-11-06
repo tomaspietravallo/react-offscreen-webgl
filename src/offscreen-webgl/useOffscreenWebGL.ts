@@ -62,6 +62,13 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		let cancelled = false;
 		const initializeWebGL = async () => {
 			try {
+				if (!disableResizeObserver) {
+					const rect = canvas.getBoundingClientRect();
+					if (rect.width > 0 && rect.height > 0) {
+						canvas.width = Math.max(1, Math.round(rect.width * window.devicePixelRatio));
+						canvas.height = Math.max(1, Math.round(rect.height * window.devicePixelRatio));
+					}
+				}
 				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 				proxyRef.current = proxy;
 
@@ -107,7 +114,9 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				await proxy.setFrameRateAsync(refreshRate);
 				if (cancelled) return;
 
-				await proxy.paintCanvasAsync();
+				await proxy.updateUniformAsync('u_resolution', [canvas.width, canvas.height]);
+				if (cancelled) return;
+				await proxy.resizeAsync(canvas.width, canvas.height);
 				if (cancelled) return;
 				setState((prev) => ({
 					...prev,
@@ -174,11 +183,20 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		if (!state.isReady || !canvas || !proxyRef.current || disableResizeObserver) return;
 
 		try {
-			const observer = new ResizeObserver(() => {
-				if (disableResizeObserver || !proxyRef.current) return;
-
-				proxyRef.current.resize(canvas.width, canvas.height);
-				proxyRef.current.updateUniform('u_resolution', [canvas.width, canvas.height]);
+			const observer = new ResizeObserver((entries) => {
+				const proxy = proxyRef.current;
+				if (!proxy) return;
+				const { width, height } = entries[0].contentRect;
+				if (!width || !height) return;
+				const pixelWidth = Math.max(1, Math.round(width * window.devicePixelRatio));
+				const pixelHeight = Math.max(1, Math.round(height * window.devicePixelRatio));
+				if (canvas.width === pixelWidth && canvas.height === pixelHeight) return;
+				canvas.width = pixelWidth;
+				canvas.height = pixelHeight;
+				void (async () => {
+					await proxy.updateUniformAsync('u_resolution', [pixelWidth, pixelHeight]);
+					await proxy.resizeAsync(pixelWidth, pixelHeight);
+				})().catch(setError);
 			});
 
 			observer.observe(canvas);
