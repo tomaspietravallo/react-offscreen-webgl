@@ -32,3 +32,15 @@ Be sure to format the code before submitting changes in order to preserve the co
 ### Tests
 
 At this point in time, there are no automated tests for this package. The `/tests/vite` folder contains a barebones vite react app with an OffscreenWebGL component instance that can be used to verify things behave as expected. In the future, it'd be nice to have more use cases covered and automated tests
+
+## Publishing
+
+Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) and does not require an npm token in GitHub Actions. In the npm package settings, configure a GitHub Actions trusted publisher with:
+
+- Owner: `tomaspietravallo`
+- Repository: `react-offscreen-webgl`
+- Workflow filename: `publish.yml`
+- Environment: leave empty
+- Allow `npm publish` for this trusted publisher
+
+To release, update the package version and lockfile, then publish a GitHub release whose tag matches the version (with or without a `v` prefix). The workflow runs the tests, builds the package, and publishes with provenance. Prerelease versions use the `next` npm dist-tag; stable versions use `latest`. The version must not already exist on npm.
