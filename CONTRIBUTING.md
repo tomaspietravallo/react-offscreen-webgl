@@ -43,4 +43,6 @@ Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishe
 - Environment: leave empty
 - Allow `npm publish` for this trusted publisher
 
-To release, update the package version and lockfile, then publish a GitHub release whose tag matches the version (with or without a `v` prefix). The workflow runs the tests, builds the package, and publishes with provenance. Prerelease versions use the `next` npm dist-tag; stable versions use `latest`. The version must not already exist on npm.
+Pushes to `main` publish after tests pass when commits contain eligible changes. `fix` and `hotfix` bump the patch version, `feat` bumps the minor version, and a commit containing `!` bumps the major version. `ci`, `docs`, and `chore` commits, plus any commit containing `wip` (case-insensitive), are excluded. The highest eligible bump wins, and eligible commit summaries become the published package description and workflow summary.
+
+The workflow derives the next version from the highest version on npm and records the source commit in the published package metadata. For the first automated run, it examines commits in the push because existing packages do not contain that metadata. The repository's version and description are not changed by the workflow.

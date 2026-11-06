@@ -1,61 +1,72 @@
 name: Publish to npm
 
 on:
-    release:
-        types: [published]
+    push:
+        branches: [main]
+
+concurrency:
+    group: npm-publish-main
+    queue: max
 
 permissions:
     contents: read
 
 jobs:
+    plan:
+        runs-on: ubuntu-latest
+        outputs:
+            publish: ${{ steps.release.outputs.publish }}
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  fetch-depth: 0
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: '24'
+                  package-manager-cache: false
+            - run: npm ci
+            - run: node --test scripts/release.test.mjs
+            - name: Determine release
+              id: release
+              env:
+                  BEFORE_SHA: ${{ github.event.before }}
+              run: node scripts/release.mjs
+
     test:
-        name: Test
+        needs: plan
+        if: needs.plan.outputs.publish == 'true'
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
-
             - uses: actions/setup-node@v6
               with:
                   node-version: '24'
                   cache: 'npm'
-
             - run: npm ci
             - run: npx playwright install --with-deps chromium
             - run: npm run test:unit
             - run: npm run test:browser
 
     publish:
-        name: Publish
-        needs: test
+        needs: [plan, test]
+        if: needs.plan.outputs.publish == 'true'
         runs-on: ubuntu-latest
         permissions:
             contents: read
             id-token: write
-
         steps:
             - uses: actions/checkout@v6
-
+              with:
+                  fetch-depth: 0
             - uses: actions/setup-node@v6
               with:
                   node-version: '24'
                   registry-url: 'https://registry.npmjs.org'
                   package-manager-cache: false
-
-            - name: Check release version
-              env:
-                  RELEASE_TAG: ${{ github.event.release.tag_name }}
-              run: |
-                  node -e '
-                    const version = require("./package.json").version;
-                    if (![version, `v${version}`].includes(process.env.RELEASE_TAG)) {
-                      throw new Error(`Release tag must match package version ${version}`);
-                    }
-                  '
-
             - run: npm ci
+            - name: Prepare version and description
+              env:
+                  BEFORE_SHA: ${{ github.event.before }}
+              run: node scripts/release.mjs --apply
             - run: npm run build
-
-            - name: Publish with provenance
-              run: |
-                  tag=$(node -p "require('./package.json').version.split('+')[0].includes('-') ? 'next' : 'latest'")
-                  npm publish --provenance --access public --tag "$tag"
+            - run: npm publish --provenance --access public
