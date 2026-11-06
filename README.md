@@ -18,7 +18,7 @@ Render WebGL fragment shaders inside React components using `OffscreenCanvas` an
 
 Because the render loop runs in the worker, expensive shader work does not block the main-thread event loop.
 
-By default, all `<OffscreenWebGL>` instances that **do not** set `isolate={true}` share a single full-page `<canvas>` element. Each component renders into its own sub-region of that canvas via WebGL scissor and viewport clipping. This reduces the number of WebGL contexts in the page to one.
+Each component currently creates its own WebGL context. Browsers limit the number of active contexts; sharing a context is tracked in [issue #10](https://github.com/tomaspietravallo/react-offscreen-webgl/issues/10).
 
 ---
 
@@ -86,7 +86,6 @@ Or load a shader from a URL (e.g. from your `public/` directory):
 | `vertexShaderURL`       | `string`                                | —                    | URL to fetch the vertex shader from.                                                                                                                                       |
 | `refreshRate`           | `number`                                | `30`                 | Render loop frequency in frames per second.                                                                                                                                |
 | `disableResizeObserver` | `boolean`                               | `false`              | When `true`, the component will not automatically resize the WebGL viewport when the canvas element resizes.                                                               |
-| `isolate`               | `boolean`                               | `false`              | When `true`, the component creates its own dedicated canvas instead of sharing the global one. Use this when you need an independent GL context.                           |
 | `u_<name>`              | `number \| number[]`                    | —                    | Pass a float uniform named `u_<name>` to the shader. A plain `number` becomes `uniform float`; an array becomes `uniform vec2/3/4` depending on length.                    |
 | `f_<name>`              | `(manager, frame, timeElapsed) => void` | —                    | A function that runs **once** on the worker context after initialization. Receives the `WebGLManager` instance, the current frame count, and the total elapsed time in ms. |
 | `f_each_<name>`         | `(manager, frame, timeElapsed) => void` | —                    | A function that runs **on every frame** in the worker's render loop. The key must contain the substring `each` for the hook to be registered as a per-frame callback.      |
@@ -148,24 +147,6 @@ The same nested array shape is accepted by `fragmentShaderURL`:
 
 ```tsx
 <OffscreenWebGL fragmentShaderURL={[['/shaders/blur-h.glsl'], ['/shaders/blur-v.glsl']]} />
-```
-
----
-
-## Shared canvas mode
-
-By default (`isolate={false}`), all `<OffscreenWebGL>` instances share a single full-page canvas that is positioned absolutely behind page content. Each component registers its own scissor/viewport region so renders don't bleed into each other.
-
-**Benefits:** Only one WebGL context is created regardless of how many components are on the page. Browsers limit the number of concurrent WebGL contexts per document (typically 8–16), so this matters at scale.
-
-**When to use `isolate={true}`:**
-
-- You need a separate GL context with independent GL state.
-- You are embedding the canvas inside a CSS transform or stacking context that would make the shared canvas position calculations incorrect.
-- You are debugging and want to isolate one component's rendering.
-
-```tsx
-<OffscreenWebGL isolate fragmentShader={myShader} />
 ```
 
 ---

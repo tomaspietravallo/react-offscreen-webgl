@@ -63,6 +63,10 @@ export class WebGLManager {
 	}
 
 	public destroy(): Result<WebGLManager> {
+		if (this.interval !== null) {
+			clearInterval(this.interval);
+			this.interval = null;
+		}
 		try {
 			if (this.program) {
 				if (this.vertexShader) {
@@ -183,7 +187,7 @@ export class WebGLManager {
 						source
 					);
 					if (fragmentShaderErr) {
-						throw err(new Error(`[OffscreenCanvas @ GLManager] Failed to compile Fragment Shader: ${fragmentShaderErr}`));
+						throw new Error(`[OffscreenCanvas @ GLManager] Failed to compile Fragment Shader: ${fragmentShaderErr}`);
 					}
 
 					// Create a program for each shader
