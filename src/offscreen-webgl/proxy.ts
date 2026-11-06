@@ -14,7 +14,8 @@ export type WebGLManagerProxyType = WebGLManagerProxyClass & MappedManagerFuncti
 
 class WebGLManagerProxyClass {
 	private static worker: Worker | null = null;
-	private static pendingResponses: Record<string, (response: any) => void> = {};
+	private static workerFailure: Error | null = null;
+	private static pendingResponses: Record<string, { resolve: (value: any) => void; reject: (error: Error) => void }> = {};
 	private readonly PROXY_ID = `WebGLManagerProxy-${uuidv4()}`;
 
 	private static readonly _managerPrototype = Object.getOwnPropertyNames(WebGLManager.prototype).reduce(
@@ -31,7 +32,13 @@ class WebGLManagerProxyClass {
 	constructor(canvas: HTMLCanvasElement) {
 		if (!WebGLManagerProxyClass.worker) {
 			WebGLManagerProxyClass.worker = new WebWorker();
-			WebGLManagerProxyClass.worker.onmessage = WebGLManagerProxyClass.handleMessage.bind(this);
+			WebGLManagerProxyClass.worker.onmessage = WebGLManagerProxyClass.handleMessage;
+			WebGLManagerProxyClass.worker.onerror = (event) => {
+				const error = new Error(event.message || 'WebGL worker failed');
+				WebGLManagerProxyClass.workerFailure = error;
+				for (const pending of Object.values(WebGLManagerProxyClass.pendingResponses)) pending.reject(error);
+				WebGLManagerProxyClass.pendingResponses = {};
+			};
 		}
 
 		const offscreenCanvas = canvas.transferControlToOffscreen()!;
@@ -77,7 +84,9 @@ class WebGLManagerProxyClass {
 		if (data.type === WorkerMessageType.RESPONSE) {
 			const { id, result, error } = data;
 			if (WebGLManagerProxyClass.pendingResponses[id]) {
-				WebGLManagerProxyClass.pendingResponses[id](error ? Promise.reject(new Error(error)) : Promise.resolve(result));
+				error
+					? WebGLManagerProxyClass.pendingResponses[id].reject(new Error(error))
+					: WebGLManagerProxyClass.pendingResponses[id].resolve(result);
 				delete WebGLManagerProxyClass.pendingResponses[id];
 			} else {
 				console.warn(`[WebGLManagerProxy] No pending response for ID: ${id}`, data);
@@ -85,7 +94,7 @@ class WebGLManagerProxyClass {
 		} else if (data.type === WorkerMessageType.ERROR) {
 			const { error, id } = data;
 			if (id && WebGLManagerProxyClass.pendingResponses[id]) {
-				WebGLManagerProxyClass.pendingResponses[id](Promise.reject(new Error(error)));
+				WebGLManagerProxyClass.pendingResponses[id].reject(new Error(error));
 				delete WebGLManagerProxyClass.pendingResponses[id];
 			} else {
 				console.error(`[WebGLManagerProxy] Error received without pending response for ID: ${id}`, error);
@@ -111,20 +120,14 @@ class WebGLManagerProxyClass {
 	): Promise<ReturnType<WebGLManager[ManagerMethod] extends (...args: any) => any ? WebGLManager[ManagerMethod] : never>> {
 		const id = uuidv4();
 
-		const promise = new Promise((resolve) => {
-			WebGLManagerProxyClass.pendingResponses[id] = resolve;
-		}) as ReturnType<WebGLManager[ManagerMethod] extends (...args: any) => any ? WebGLManager[ManagerMethod] : never>;
-
-		WebGLManagerProxyClass.worker?.postMessage({
+		return this.request(id, {
 			type: WorkerMessageType.CALL_METHOD,
 			proxyId: this.PROXY_ID,
 			method,
 			args,
 			id,
 			async: true,
-		} as WorkerMessages);
-
-		return promise;
+		});
 	}
 
 	public runOnContext(key: string, fn: RunOnWorkerContextFn, onEachFrame: boolean = false) {
@@ -142,7 +145,7 @@ class WebGLManagerProxyClass {
 
 	public runOnContextAsync<T>(key: string, fn: RunOnWorkerContextFn<T>, onEachFrame: boolean = false) {
 		const id = uuidv4();
-		WebGLManagerProxyClass.worker?.postMessage({
+		return this.request<T>(id, {
 			type: WorkerMessageType.EVAL_FN,
 			fn: fn.toString(),
 			onEachFrame,
@@ -150,10 +153,20 @@ class WebGLManagerProxyClass {
 			async: true,
 			proxyId: this.PROXY_ID,
 			key,
-		} as WorkerMessages);
+		});
+	}
 
-		return new Promise<T>((resolve) => {
-			WebGLManagerProxyClass.pendingResponses[id] = resolve;
+	private request<T>(id: string, message: WorkerMessages): Promise<T> {
+		return new Promise<T>((resolve, reject) => {
+			WebGLManagerProxyClass.pendingResponses[id] = { resolve, reject };
+			try {
+				if (WebGLManagerProxyClass.workerFailure) throw WebGLManagerProxyClass.workerFailure;
+				if (!WebGLManagerProxyClass.worker) throw new Error('WebGL worker is unavailable');
+				WebGLManagerProxyClass.worker.postMessage(message);
+			} catch (error) {
+				delete WebGLManagerProxyClass.pendingResponses[id];
+				reject(error);
+			}
 		});
 	}
 }

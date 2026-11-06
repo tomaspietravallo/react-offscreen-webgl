@@ -59,6 +59,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 		setState((prev) => ({ ...prev, isLoading: true, hasError: false, error: null }));
 
+		let cancelled = false;
 		const initializeWebGL = async () => {
 			try {
 				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
@@ -66,38 +67,48 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 				if (options.vertexShaderURL) {
 					await proxy.setRemoteVertexShaderAsync(new URL(options.vertexShaderURL, window.location.origin).toString());
+					if (cancelled) return;
 				} else {
 					await proxy.setVertexShaderAsync(vertexShader);
+					if (cancelled) return;
 				}
 
 				if (options.fragmentShaderURL) {
 					if (Array.isArray(options.fragmentShaderURL)) {
 						await proxy.setRemoteFragmentShaderGroupsAsync(options.fragmentShaderURL);
+						if (cancelled) return;
 					} else {
 						await proxy.setRemoteFragmentShadersAsync(new URL(options.fragmentShaderURL, window.location.origin).toString());
+						if (cancelled) return;
 					}
 				} else {
 					if (Array.isArray(fragmentShader)) {
 						await proxy.setFragmentShaderGroupsAsync(fragmentShader);
+						if (cancelled) return;
 					} else {
 						await proxy.setFragmentShadersAsync([fragmentShader]);
+						if (cancelled) return;
 					}
 				}
 
-				await proxy.setupWholeScreenQuad();
+				await proxy.setupWholeScreenQuadAsync();
+				if (cancelled) return;
 
 				for (const [key, value] of Object.entries(uniforms)) {
 					await proxy.updateUniformAsync(key as WebGLUniformName, value);
+					if (cancelled) return;
 				}
 
 				for (const [key, fn] of Object.entries(functions)) {
-					proxy.runOnContext(key, fn, key.includes('each'));
+					await proxy.runOnContextAsync(key, fn, key.includes('each'));
+					if (cancelled) return;
 				}
 
-				proxy.setFrameRate(refreshRate);
+				await proxy.setFrameRateAsync(refreshRate);
+				if (cancelled) return;
 
 				await proxy.paintCanvasAsync();
-
+				if (cancelled) return;
 				setState((prev) => ({
 					...prev,
 					isLoading: false,
@@ -105,14 +116,16 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 					proxy,
 				}));
 			} catch (error) {
-				setError(error as Error);
+				if (!cancelled) setError(error as Error);
 			}
 		};
 
 		initializeWebGL();
 
 		return () => {
+			cancelled = true;
 			if (proxyRef.current) {
+				proxyRef.current.destroy();
 				proxyRef.current = null;
 			}
 		};
