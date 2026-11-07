@@ -3,6 +3,8 @@ layout: ../layouts/Docs.astro
 ---
 
 import ShaderDemo from '../components/ShaderDemo.jsx';
+import { ArrowUpRight } from 'lucide-react';
+import { siGithub } from 'simple-icons';
 
 <div id="getting-started" className="eyebrow">
 	<span></span> Getting started
@@ -17,10 +19,13 @@ import ShaderDemo from '../components/ShaderDemo.jsx';
 
 <div className="hero-actions">
 	<a className="button primary" href="#quick-start">
-		Get started <span>↗</span>
+		Get started <ArrowUpRight className="icon" aria-hidden="true" />
 	</a>
 	<a className="button secondary" href="https://github.com/tomaspietravallo/react-offscreen-webgl">
-		View on GitHub <span>↗</span>
+		View on GitHub{' '}
+		<svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+			<path fill="currentColor" d={siGithub.path} />
+		</svg>
 	</a>
 </div>
 
