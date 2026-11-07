@@ -67,7 +67,6 @@ a {
 .eyebrow,
 .section-number,
 .side-label,
-.side-note,
 .demo-controls,
 .demo-caption {
 	font-family: 'Geist Mono Variable', monospace;
@@ -103,6 +102,8 @@ a {
 	margin-bottom: 24px;
 }
 .sidebar nav {
+	position: sticky;
+	top: 100px;
 	display: grid;
 	gap: 18px;
 }
@@ -152,17 +153,6 @@ a {
 			0 0,
 			100% 0;
 	}
-}
-.side-note {
-	position: sticky;
-	top: 110px;
-	margin-top: 75px;
-	color: #9999a1;
-	line-height: 2;
-}
-.side-note span {
-	letter-spacing: 0;
-	color: #d1d1d6;
 }
 main {
 	width: min(100%, 990px);
@@ -393,14 +383,19 @@ footer span:first-child {
 		display: block;
 	}
 	.sidebar {
+		position: sticky;
+		top: 72px;
+		z-index: 4;
+		background: #0a0a0b;
 		border: 0;
-		padding: 24px 5% 0;
+		border-bottom: 1px solid #29292c;
+		padding: 14px 5% 0;
 	}
-	.side-label,
-	.side-note {
+	.side-label {
 		display: none;
 	}
 	.sidebar nav {
+		position: static;
 		display: flex;
 		gap: 18px;
 		overflow-x: auto;
@@ -412,6 +407,10 @@ footer span:first-child {
 	}
 	main {
 		padding: 24px 3% 80px;
+	}
+	section,
+	.eyebrow {
+		scroll-margin-top: 145px;
 	}
 	.feature-grid {
 		grid-template-columns: 1fr;
@@ -427,6 +426,9 @@ footer span:first-child {
 @media (max-width: 500px) {
 	.topbar {
 		height: 64px;
+	}
+	.sidebar {
+		top: 64px;
 	}
 	.brand {
 		font-size: 14px;
