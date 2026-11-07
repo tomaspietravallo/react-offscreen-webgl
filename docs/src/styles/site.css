@@ -110,42 +110,47 @@ a {
 	font-size: 15px;
 	color: #bebec5;
 }
-.sidebar nav a:hover,
-.sidebar nav a:focus-visible {
-	color: #ededed;
-}
 .sidebar nav a.is-animating {
 	animation: sidebar-spectrum-fallback 1.2s linear;
 }
 @keyframes sidebar-spectrum-fallback {
-	0% {
+	0%,
+	100% {
+		color: #bebec5;
+	}
+	25% {
 		color: #ff5555;
 	}
-	33% {
+	50% {
 		color: #62ef80;
 	}
-	66% {
+	75% {
 		color: #6b96ff;
-	}
-	100% {
-		color: #ededed;
 	}
 }
 @supports (background-clip: text) {
 	.sidebar nav a.is-animating {
 		color: transparent;
-		background: linear-gradient(to right, #ff5555 0%, #ff5555 20%, #62ef80 40%, #6b96ff 60%, #ededed 80%, #ededed 100%);
-		background-size: 500% 100%;
+		background-image:
+			linear-gradient(to bottom, #bebec5 20%, transparent 95%),
+			linear-gradient(to right, #bebec5 0%, #bebec5 20%, #ff5555 36%, #62ef80 52%, #6b96ff 68%, #bebec5 80%, #bebec5 100%);
+		background-size:
+			100% 100%,
+			500% 100%;
 		background-clip: text;
 		animation: sidebar-spectrum 1.2s linear;
 	}
 }
 @keyframes sidebar-spectrum {
 	from {
-		background-position: 0% 0;
+		background-position:
+			0 0,
+			0% 0;
 	}
 	to {
-		background-position: 100% 0;
+		background-position:
+			0 0,
+			100% 0;
 	}
 }
 .side-note {
@@ -461,7 +466,7 @@ footer span:first-child {
 	.sidebar nav a.is-animating {
 		animation: none;
 		background: none;
-		color: #ededed;
+		color: #bebec5;
 	}
 	.header-wave {
 		display: none;
