@@ -38,6 +38,19 @@ const base = import.meta.env.BASE_URL;
       </aside>
       <main><slot /></main>
     </div>
+    <script>
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      document.querySelectorAll('.sidebar nav a').forEach((link) => {
+        const animate = () => {
+          if (!reducedMotion.matches) link.classList.add('is-animating');
+        };
+        const clear = () => link.classList.remove('is-animating');
+        link.addEventListener('pointerenter', animate);
+        link.addEventListener('focus', animate);
+        link.addEventListener('animationend', clear);
+        link.addEventListener('animationcancel', clear);
+      });
+    </script>
     <footer><span>◈ &nbsp; react-offscreen-webgl</span><span>Open source · MIT License</span></footer>
   </body>
 </html>
