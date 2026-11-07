@@ -1,0 +1,41 @@
+---
+import '../styles/site.css';
+const base = import.meta.env.BASE_URL;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%E2%97%88%3C/text%3E%3C/svg%3E" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Documentation for rendering WebGL shaders in React with an offscreen worker." />
+    <title>react-offscreen-webgl — Documentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href={base}><span class="brand-mark">◈</span> react-offscreen-webgl <span class="alpha">ALPHA</span></a>
+      <a class="github" href="https://github.com/tomaspietravallo/react-offscreen-webgl">GitHub <span aria-hidden="true">↗</span></a>
+    </header>
+    <div class="shell">
+      <aside class="sidebar" aria-label="Documentation navigation">
+        <div class="side-label">DOCUMENTATION</div>
+        <nav>
+          <a href="#overview">Overview</a>
+          <a href="#installation">Installation</a>
+          <a href="#quick-start">Quick start</a>
+          <a href="#props">Props reference</a>
+          <a href="#uniforms">Uniforms</a>
+          <a href="#callbacks">Worker callbacks</a>
+          <a href="#multipass">Multi-pass rendering</a>
+          <a href="#limitations">Limitations</a>
+        </nav>
+        <div class="side-note">BUILT FOR THE WEB<br /><span>React + WebGL + Workers</span></div>
+      </aside>
+      <main><slot /></main>
+    </div>
+    <footer><span>◈ &nbsp; react-offscreen-webgl</span><span>Open source · MIT License</span></footer>
+  </body>
+</html>

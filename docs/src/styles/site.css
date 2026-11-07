@@ -1,0 +1,390 @@
+:root {
+	font-family: 'DM Sans', sans-serif;
+	color: #e9edf2;
+	background: #0c1015;
+	font-size: 15px;
+	scroll-behavior: smooth;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+}
+a {
+	color: inherit;
+	text-decoration: none;
+}
+.topbar {
+	height: 72px;
+	border-bottom: 1px solid #252c33;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 5%;
+	position: sticky;
+	top: 0;
+	background: #0c1015ee;
+	backdrop-filter: blur(12px);
+	z-index: 5;
+}
+.brand {
+	font-weight: 700;
+	font-size: 14px;
+	letter-spacing: -0.02em;
+}
+.brand-mark {
+	font-size: 25px;
+	color: #a8efce;
+	vertical-align: middle;
+	margin-right: 9px;
+}
+.alpha,
+.eyebrow,
+.section-number,
+.side-label,
+.side-note,
+.demo-controls,
+.demo-caption {
+	font-family: 'DM Mono', monospace;
+	font-size: 10px;
+	letter-spacing: 0.09em;
+}
+.alpha {
+	color: #a8efce;
+	border: 1px solid #375248;
+	border-radius: 3px;
+	padding: 4px 6px;
+	margin-left: 8px;
+}
+.github {
+	font-size: 13px;
+	color: #bcc5ce;
+}
+.github span {
+	padding-left: 8px;
+}
+.shell {
+	max-width: 1440px;
+	margin: auto;
+	display: grid;
+	grid-template-columns: 260px minmax(0, 1fr);
+}
+.sidebar {
+	padding: 67px 32px 0 5vw;
+	border-right: 1px solid #252c33;
+}
+.side-label {
+	color: #6d7984;
+	margin-bottom: 24px;
+}
+.sidebar nav {
+	display: grid;
+	gap: 18px;
+}
+.sidebar nav a {
+	font-size: 13px;
+	color: #a0abb5;
+}
+.sidebar nav a:hover,
+.sidebar nav a:focus {
+	color: #a8efce;
+}
+.side-note {
+	position: sticky;
+	top: 110px;
+	margin-top: 75px;
+	color: #73817e;
+	line-height: 2;
+}
+.side-note span {
+	letter-spacing: 0;
+	color: #c2cbc8;
+}
+main {
+	width: min(100%, 930px);
+	padding: 80px 60px 100px;
+	margin: auto;
+}
+.eyebrow,
+.section-number {
+	color: #95dcbc;
+}
+.eyebrow span:first-child,
+.live-dot {
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	background: #a8efce;
+	border-radius: 50%;
+	margin-right: 8px;
+}
+.slash {
+	color: #56635f;
+	margin: 0 10px;
+}
+h1 {
+	font-size: clamp(44px, 6vw, 76px);
+	line-height: 1.03;
+	letter-spacing: -0.065em;
+	max-width: 720px;
+	margin: 24px 0;
+	color: #f4f7f6;
+}
+h2 {
+	font-size: clamp(30px, 4vw, 42px);
+	letter-spacing: -0.045em;
+	line-height: 1.12;
+	margin: 15px 0 20px;
+}
+h3 {
+	font-size: 15px;
+	margin: 15px 0 8px;
+}
+.lead {
+	font-size: 18px;
+	line-height: 1.7;
+	max-width: 650px;
+	color: #aab5be;
+	margin: 0;
+}
+.hero-actions {
+	display: flex;
+	gap: 10px;
+	margin: 30px 0 48px;
+}
+.button {
+	padding: 13px 17px;
+	border-radius: 4px;
+	font-size: 13px;
+	font-weight: 700;
+}
+.button span {
+	margin-left: 20px;
+}
+.primary {
+	background: #b6f4d4;
+	color: #102017;
+}
+.secondary {
+	border: 1px solid #3a444c;
+	color: #d7e0e1;
+}
+.demo {
+	border: 1px solid #303b40;
+	padding: 7px;
+	background: #151c21;
+	border-radius: 5px;
+}
+.demo-canvas {
+	height: 340px;
+	background: #182b42;
+	overflow: hidden;
+}
+.demo-canvas canvas {
+	display: block;
+}
+.demo-controls {
+	min-height: 56px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 15px;
+	padding: 10px 14px;
+	color: #b8c9c2;
+}
+.demo-controls label {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	letter-spacing: 0;
+	text-transform: none;
+}
+.demo-controls input {
+	accent-color: #b6f4d4;
+	width: 110px;
+}
+.demo-separator {
+	color: #51635e;
+	margin: 0 7px;
+}
+.demo-caption {
+	display: flex;
+	justify-content: space-between;
+	color: #718079;
+	margin-top: 14px;
+	gap: 15px;
+}
+.demo-caption span:last-child {
+	font-family: 'DM Sans', sans-serif;
+	letter-spacing: 0;
+	font-size: 12px;
+}
+section {
+	scroll-margin-top: 100px;
+	margin-top: 105px;
+}
+section > p,
+section > ul {
+	line-height: 1.8;
+	color: #aab5be;
+	max-width: 720px;
+}
+section a {
+	color: #b6f4d4;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+.feature-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	border: 1px solid #293238;
+	margin-top: 35px;
+}
+.feature-grid > div {
+	padding: 23px;
+	border-right: 1px solid #293238;
+}
+.feature-grid > div:last-child {
+	border: 0;
+}
+.feature-grid span {
+	font:
+		10px 'DM Mono',
+		monospace;
+	color: #8cd6b2;
+}
+.feature-grid p {
+	color: #8e9ba3;
+	font-size: 13px;
+	line-height: 1.65;
+	margin: 0;
+}
+pre {
+	padding: 22px 24px;
+	overflow: auto;
+	border: 1px solid #2c363b;
+	border-radius: 4px;
+	font:
+		12px/1.8 'DM Mono',
+		monospace !important;
+	margin: 25px 0;
+	background: #141b20 !important;
+}
+code {
+	font-family: 'DM Mono', monospace;
+	font-size: 0.87em;
+	color: #b6eace;
+}
+pre code {
+	font-size: inherit;
+}
+table {
+	border-collapse: collapse;
+	width: 100%;
+	font-size: 13px;
+	line-height: 1.6;
+}
+th,
+td {
+	text-align: left;
+	padding: 13px;
+	border-bottom: 1px solid #293238;
+	vertical-align: top;
+}
+th {
+	color: #e4ece8;
+	font-weight: 600;
+}
+td {
+	color: #aab5be;
+}
+.table-wrap {
+	overflow-x: auto;
+}
+.callout {
+	border-left: 2px solid #a8efce;
+	background: #17231f;
+	color: #b6c9bf;
+	padding: 19px 22px;
+	line-height: 1.7;
+	margin-top: 25px;
+}
+.callout strong {
+	color: #e5f6eb;
+}
+footer {
+	border-top: 1px solid #252c33;
+	display: flex;
+	justify-content: space-between;
+	padding: 30px 5%;
+	color: #74827e;
+	font-size: 12px;
+}
+footer span:first-child {
+	color: #b6d9c7;
+	font-weight: 700;
+}
+@media (max-width: 800px) {
+	.shell {
+		display: block;
+	}
+	.sidebar {
+		border: 0;
+		padding: 24px 5% 0;
+	}
+	.side-label,
+	.side-note {
+		display: none;
+	}
+	.sidebar nav {
+		display: flex;
+		gap: 18px;
+		overflow-x: auto;
+		white-space: nowrap;
+		padding-bottom: 12px;
+	}
+	.sidebar nav a {
+		font-size: 12px;
+	}
+	main {
+		padding: 55px 5% 80px;
+	}
+	.feature-grid {
+		grid-template-columns: 1fr;
+	}
+	.feature-grid > div {
+		border-right: 0;
+		border-bottom: 1px solid #293238;
+	}
+	.demo-canvas {
+		height: 270px;
+	}
+}
+@media (max-width: 500px) {
+	.topbar {
+		height: 64px;
+	}
+	.brand {
+		font-size: 12px;
+	}
+	.alpha {
+		display: none;
+	}
+	.demo-controls,
+	.demo-caption {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+	.demo-controls label {
+		width: 100%;
+		justify-content: space-between;
+	}
+	.hero-actions {
+		flex-wrap: wrap;
+	}
+	footer {
+		gap: 15px;
+		flex-direction: column;
+	}
+}
