@@ -115,9 +115,9 @@ a {
 	color: #ededed;
 }
 .sidebar nav a.is-animating {
-	animation: sidebar-spectrum 1.2s ease-out;
+	animation: sidebar-spectrum-fallback 1.2s linear;
 }
-@keyframes sidebar-spectrum {
+@keyframes sidebar-spectrum-fallback {
 	0% {
 		color: #ff5555;
 	}
@@ -129,6 +129,23 @@ a {
 	}
 	100% {
 		color: #ededed;
+	}
+}
+@supports (background-clip: text) {
+	.sidebar nav a.is-animating {
+		color: transparent;
+		background: linear-gradient(to right, #ff5555 0%, #ff5555 20%, #62ef80 40%, #6b96ff 60%, #ededed 80%, #ededed 100%);
+		background-size: 500% 100%;
+		background-clip: text;
+		animation: sidebar-spectrum 1.2s linear;
+	}
+}
+@keyframes sidebar-spectrum {
+	from {
+		background-position: 0% 0;
+	}
+	to {
+		background-position: 100% 0;
 	}
 }
 .side-note {
@@ -443,6 +460,8 @@ footer span:first-child {
 @media (prefers-reduced-motion: reduce) {
 	.sidebar nav a.is-animating {
 		animation: none;
+		background: none;
+		color: #ededed;
 	}
 	.header-wave {
 		display: none;
