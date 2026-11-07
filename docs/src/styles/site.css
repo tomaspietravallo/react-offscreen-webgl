@@ -28,6 +28,30 @@ a {
 	backdrop-filter: blur(12px);
 	z-index: 5;
 }
+.header-wave {
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: min(400px, 48vw);
+	overflow: hidden;
+	pointer-events: none;
+	mask-image: linear-gradient(to right, #000 0%, #000 20%, transparent 100%);
+}
+.header-wave-render {
+	width: 50%;
+	height: 50%;
+}
+.header-wave-render canvas {
+	display: block;
+	transform: scale(2);
+	transform-origin: top left;
+}
+.brand,
+.github {
+	position: relative;
+	text-shadow:
+		0 1px 4px #000,
+		0 0 8px #000;
+}
 .brand {
 	font-weight: 700;
 	font-size: 16px;
@@ -103,7 +127,7 @@ a {
 }
 main {
 	width: min(100%, 930px);
-	padding: 80px 60px 100px;
+	padding: 48px 60px 100px;
 	margin: auto;
 }
 .eyebrow,
@@ -154,10 +178,13 @@ h3 {
 	margin: 30px 0 48px;
 }
 .button {
-	padding: 13px 17px;
+	padding: 9px 17px;
 	border-radius: 4px;
 	font-size: 15px;
 	font-weight: 700;
+}
+.button p {
+	margin: 0;
 }
 .button span {
 	margin-left: 20px;
@@ -353,7 +380,7 @@ footer span:first-child {
 		font-size: 14px;
 	}
 	main {
-		padding: 55px 5% 80px;
+		padding: 32px 5% 80px;
 	}
 	.feature-grid {
 		grid-template-columns: 1fr;
@@ -401,5 +428,11 @@ footer span:first-child {
 	footer {
 		gap: 15px;
 		flex-direction: column;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.header-wave {
+		display: none;
 	}
 }
