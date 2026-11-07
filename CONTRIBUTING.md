@@ -43,6 +43,6 @@ Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishe
 - Environment: leave empty
 - Allow `npm publish` for this trusted publisher
 
-Pushes to `main` publish after tests pass when commits contain eligible changes. `fix` and `hotfix` bump the patch version, `feat` bumps the minor version, and a commit containing `!` bumps the major version. `ci`, `docs`, and `chore` commits, plus any commit containing `wip` (case-insensitive), are excluded. The highest eligible bump wins, and eligible commit summaries become the published package description and workflow summary.
+Pushes to `main` run the tests and semantic-release. `fix` and `hotfix` bump the patch version, `feat` bumps the minor version, and conventional breaking changes (such as `feat!:` or a `BREAKING CHANGE` footer) bump the major version. `ci`, `docs`, and `chore` commits are excluded. Include `[skip release]` in a work-in-progress commit message to prevent it from triggering a release. The highest eligible bump wins, and eligible commit summaries become the GitHub release notes.
 
-The workflow derives the next version from the highest version on npm and records the source commit in the published package metadata. For the first automated run, it examines commits in the push because existing packages do not contain that metadata. The repository's version and description are not changed by the workflow.
+After semantic-release creates a GitHub release, the same workflow publishes that release to npm with provenance. The repository's package version and description are not changed by the workflow.
