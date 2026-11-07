@@ -6,11 +6,11 @@ uniform vec2 u_resolution;
 uniform float u_time;
 uniform float u_xScale;
 uniform float u_yScale;
-uniform float u_distortion;
+uniform float u_aberration;
 
 void main() {
   vec2 p = (gl_FragCoord.xy * 2.0 - u_resolution) / min(u_resolution.x, u_resolution.y);
-  float d = length(p) * u_distortion;
+  float d = length(p) * u_aberration;
   float rx = p.x * (1.0 + d);
   float gx = p.x;
   float bx = p.x * (1.0 - d);
@@ -24,7 +24,7 @@ void main() {
 }`;
 
 export default function ShaderDemo() {
-	const [distortion, setDistortion] = useState(0.1);
+	const [aberration, setAberration] = useState(0.1);
 	const [height, setHeight] = useState(0.55);
 	const [frequency, setFrequency] = useState(1.2);
 	const [Component, setComponent] = useState(null);
@@ -45,7 +45,7 @@ export default function ShaderDemo() {
 						fragmentShader={shader}
 						u_xScale={frequency}
 						u_yScale={height}
-						u_distortion={distortion}
+						u_aberration={aberration}
 						f_each_animate={(manager, frame, time) => {
 							manager.updateUniform('u_time', time / 5000);
 							manager.paintCanvas();
@@ -54,9 +54,6 @@ export default function ShaderDemo() {
 				)}
 			</div>
 			<div className="demo-controls">
-				<span>
-					<span className="live-dot" /> LIVE EXAMPLE <span className="demo-separator">/</span> WORKER RENDERED
-				</span>
 				<div className="sliders">
 					<label>
 						Frequency{' '}
@@ -70,14 +67,14 @@ export default function ShaderDemo() {
 						/>
 					</label>
 					<label>
-						Distortion{' '}
+						Aberration{' '}
 						<input
 							type="range"
 							min="0"
 							max="0.2"
 							step="0.01"
-							value={distortion}
-							onChange={(event) => setDistortion(Number(event.target.value))}
+							value={aberration}
+							onChange={(event) => setAberration(Number(event.target.value))}
 						/>
 					</label>
 					<label>
