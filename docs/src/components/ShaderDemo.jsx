@@ -4,19 +4,28 @@ const shader = `
 precision highp float;
 uniform vec2 u_resolution;
 uniform float u_time;
-uniform float u_scale;
+uniform float u_xScale;
+uniform float u_yScale;
+uniform float u_distortion;
 
 void main() {
-  vec2 p = (gl_FragCoord.xy - 0.5 * u_resolution) / u_resolution.y;
-  float wave = sin(length(p) * u_scale - u_time * 1.5);
-  vec3 ink = vec3(0.08, 0.13, 0.36);
-  vec3 glow = vec3(0.44, 0.89, 0.79);
-  vec3 color = mix(ink, glow, smoothstep(-0.8, 1.0, wave));
-  gl_FragColor = vec4(color, 1.0);
+  vec2 p = (gl_FragCoord.xy * 2.0 - u_resolution) / min(u_resolution.x, u_resolution.y);
+  float d = length(p) * u_distortion;
+  float rx = p.x * (1.0 + d);
+  float gx = p.x;
+  float bx = p.x * (1.0 - d);
+
+  gl_FragColor = vec4(
+    0.05 / abs(p.y + sin((rx + u_time) * u_xScale) * u_yScale),
+    0.05 / abs(p.y + sin((gx + u_time) * u_xScale) * u_yScale),
+    0.05 / abs(p.y + sin((bx + u_time) * u_xScale) * u_yScale),
+    1.0
+  );
 }`;
 
 export default function ShaderDemo() {
-	const [scale, setScale] = useState(14);
+	const [distortion, setDistortion] = useState(0.2);
+	const [height, setHeight] = useState(0.55);
 	const [Component, setComponent] = useState(null);
 	useEffect(() => {
 		let active = true;
@@ -29,13 +38,15 @@ export default function ShaderDemo() {
 	}, []);
 	return (
 		<div className="demo">
-			<div className="demo-canvas" aria-label="Animated concentric waves rendered with WebGL">
+			<div className="demo-canvas" aria-label="Animated rainbow wave rendered with WebGL">
 				{Component && (
 					<Component
 						fragmentShader={shader}
-						u_scale={scale}
+						u_xScale={1.2}
+						u_yScale={height}
+						u_distortion={distortion}
 						f_each_animate={(manager, frame, time) => {
-							manager.updateUniform('u_time', time / 1000);
+							manager.updateUniform('u_time', time / 5000);
 							manager.paintCanvas();
 						}}
 					/>
@@ -45,10 +56,30 @@ export default function ShaderDemo() {
 				<span>
 					<span className="live-dot" /> LIVE EXAMPLE <span className="demo-separator">/</span> WORKER RENDERED
 				</span>
-				<label>
-					Wave density{' '}
-					<input type="range" min="6" max="28" value={scale} onChange={(event) => setScale(Number(event.target.value))} />
-				</label>
+				<div className="sliders">
+					<label>
+						Distortion{' '}
+						<input
+							type="range"
+							min="0"
+							max="0.5"
+							step="0.01"
+							value={distortion}
+							onChange={(event) => setDistortion(Number(event.target.value))}
+						/>
+					</label>
+					<label>
+						Wave height{' '}
+						<input
+							type="range"
+							min="0.1"
+							max="1"
+							step="0.01"
+							value={height}
+							onChange={(event) => setHeight(Number(event.target.value))}
+						/>
+					</label>
+				</div>
 			</div>
 		</div>
 	);
