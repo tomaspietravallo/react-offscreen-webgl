@@ -26,6 +26,7 @@ void main() {
 export default function ShaderDemo() {
 	const [distortion, setDistortion] = useState(0.2);
 	const [height, setHeight] = useState(0.55);
+	const [frequency, setFrequency] = useState(1.2);
 	const [Component, setComponent] = useState(null);
 	useEffect(() => {
 		let active = true;
@@ -42,7 +43,7 @@ export default function ShaderDemo() {
 				{Component && (
 					<Component
 						fragmentShader={shader}
-						u_xScale={1.2}
+						u_xScale={frequency}
 						u_yScale={height}
 						u_distortion={distortion}
 						f_each_animate={(manager, frame, time) => {
@@ -57,6 +58,17 @@ export default function ShaderDemo() {
 					<span className="live-dot" /> LIVE EXAMPLE <span className="demo-separator">/</span> WORKER RENDERED
 				</span>
 				<div className="sliders">
+					<label>
+						Frequency{' '}
+						<input
+							type="range"
+							min="0.3"
+							max="3"
+							step="0.01"
+							value={frequency}
+							onChange={(event) => setFrequency(Number(event.target.value))}
+						/>
+					</label>
 					<label>
 						Distortion{' '}
 						<input
