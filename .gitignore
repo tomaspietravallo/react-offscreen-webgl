@@ -7,3 +7,7 @@
 # Miscellaneous
 .DS_Store
 .env
+
+# Documentation build
+/docs/dist
+/docs/.astro
