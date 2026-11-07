@@ -8,7 +8,7 @@ uniform float u_time;
 void main() {
   vec2 p = (gl_FragCoord.xy * 2.0 - u_resolution) / u_resolution.y;
   float fade = smoothstep(0.0, 1.0, gl_FragCoord.x / u_resolution.x);
-  float d = length(p) * 0.06 * (1.0 - fade);
+  float d = length(p) * 0.045 * (1.0 - fade);
   float height = mix(0.35, 0.12, fade);
   vec3 color = vec3(
     0.025 / abs(p.y + sin((p.x * (1.0 + d) + u_time) * 0.8) * height),
