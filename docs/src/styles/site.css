@@ -134,6 +134,9 @@ main {
 .section-number {
 	color: #d0d0d5;
 }
+.eyebrow {
+	scroll-margin-top: 100px;
+}
 .eyebrow span:first-child {
 	display: inline-block;
 	width: 7px;
@@ -141,10 +144,6 @@ main {
 	background: #ededed;
 	border-radius: 50%;
 	margin-right: 8px;
-}
-.slash {
-	color: #696970;
-	margin: 0 10px;
 }
 h1 {
 	font-size: clamp(42px, 5.7vw, 72px);
@@ -167,7 +166,6 @@ h3 {
 .lead {
 	font-size: 20px;
 	line-height: 1.7;
-	max-width: 650px;
 	color: #bcbcc3;
 	margin: 0;
 }
@@ -255,7 +253,6 @@ section > p,
 section > ul {
 	line-height: 1.8;
 	color: #bcbcc3;
-	max-width: 720px;
 }
 section a {
 	color: #f0f0f2;

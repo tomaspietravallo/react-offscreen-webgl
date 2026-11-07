@@ -4,8 +4,8 @@ layout: ../layouts/Docs.astro
 
 import ShaderDemo from '../components/ShaderDemo.jsx';
 
-<div className="eyebrow">
-	<span></span> DOCUMENTATION <span className="slash">/</span> GETTING STARTED
+<div id="getting-started" className="eyebrow">
+	<span></span> Getting started
 </div>
 
 # Shaders, off the main thread.
@@ -32,9 +32,9 @@ import ShaderDemo from '../components/ShaderDemo.jsx';
 </div>
 
 <section id="overview">
-<div className="section-number">01 / THE IDEA</div>
+<div className="section-number">01</div>
 
-## A little more room to render.
+## Overview
 
 Each component creates a canvas in the DOM. A shared worker renders the shaders using one WebGL context on an `OffscreenCanvas`, then transfers frames as `ImageBitmap`s to the component canvases. Each component has its own shaders, uniforms, frame rate, and buffers.
 
@@ -42,7 +42,7 @@ Each component creates a canvas in the DOM. A shared worker renders the shaders 
 </section>
 
 <section id="installation">
-<div className="section-number">02 / SETUP</div>
+<div className="section-number">02</div>
 
 ## Installation
 
@@ -57,7 +57,7 @@ The package is alpha software and its API may change. The browser must support W
 </section>
 
 <section id="quick-start">
-<div className="section-number">03 / FIRST RENDER</div>
+<div className="section-number">03</div>
 
 ## Quick start
 
@@ -90,7 +90,7 @@ You can also load a shader with `fragmentShaderURL`. URL paths beginning with `/
 </section>
 
 <section id="props">
-<div className="section-number">04 / REFERENCE</div>
+<div className="section-number">04</div>
 
 ## Props reference
 
@@ -111,7 +111,7 @@ You can also load a shader with `fragmentShaderURL`. URL paths beginning with `/
 </section>
 
 <section id="uniforms">
-<div className="section-number">05 / DATA</div>
+<div className="section-number">05</div>
 
 ## Uniforms
 
@@ -124,7 +124,7 @@ Pass a number for a float, or an array of two, three, or four numbers for a vect
 </section>
 
 <section id="callbacks">
-<div className="section-number">06 / ANIMATION</div>
+<div className="section-number">06</div>
 
 ## Worker callbacks
 
@@ -144,7 +144,7 @@ Callbacks receive the manager, frame count, and elapsed time in milliseconds. Ca
 </section>
 
 <section id="multipass">
-<div className="section-number">07 / BEYOND ONE SHADER</div>
+<div className="section-number">07</div>
 
 ## Multi-pass rendering
 
@@ -157,7 +157,7 @@ Pass nested arrays to `fragmentShader` or `fragmentShaderURL` to configure shade
 </section>
 
 <section id="limitations">
-<div className="section-number">08 / GOOD TO KNOW</div>
+<div className="section-number">08</div>
 
 ## Limitations
 

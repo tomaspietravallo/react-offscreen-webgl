@@ -24,7 +24,7 @@ void main() {
 }`;
 
 export default function ShaderDemo() {
-	const [aberration, setAberration] = useState(0.1);
+	const [aberration, setAberration] = useState(0.05);
 	const [height, setHeight] = useState(0.55);
 	const [frequency, setFrequency] = useState(1.2);
 	const [Component, setComponent] = useState(null);
@@ -71,8 +71,8 @@ export default function ShaderDemo() {
 						<input
 							type="range"
 							min="0"
-							max="0.2"
-							step="0.01"
+							max="0.1"
+							step="0.005"
 							value={aberration}
 							onChange={(event) => setAberration(Number(event.target.value))}
 						/>
