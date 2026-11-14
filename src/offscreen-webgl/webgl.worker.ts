@@ -9,14 +9,12 @@ export enum WorkerMessageType {
 	CALL_METHOD = 'CALL_METHOD',
 	RESPONSE = 'RESPONSE',
 	EVAL_FN = 'EVAL_FN',
-	FRAME = 'FRAME',
-	FRAME_ACK = 'FRAME_ACK',
+	RELEASE = 'RELEASE',
 }
 
 export type WorkerMessages =
-	| { proxyId: string; type: WorkerMessageType.INIT; width: number; height: number }
-	| { proxyId: string; type: WorkerMessageType.FRAME_ACK }
-	| { proxyId: string; type: WorkerMessageType.FRAME; bitmap: ImageBitmap }
+	| { proxyId: string; type: WorkerMessageType.INIT; canvasId: string; output?: OffscreenCanvas; width: number; height: number }
+	| { type: WorkerMessageType.RELEASE; canvasId: string }
 	| { type: WorkerMessageType.ERROR; id?: string; error: string }
 	| { type: WorkerMessageType.CALL_METHOD; proxyId: string; id: string; method: keyof WebGLManager; args: any[]; async?: boolean }
 	| { type: WorkerMessageType.RESPONSE; id: string; result?: any; error?: string }
@@ -30,18 +28,15 @@ const managers = new Map<string, WebGLManager>();
 const failures = new Map<string, Error>();
 const queues = new Map<string, Promise<void>>();
 let sharedCanvas: OffscreenCanvas | undefined;
-const frames = new Map<string, { inFlight: boolean; pending?: ImageBitmap }>();
+const outputs = new Map<string, ImageBitmapRenderingContext>();
 
-function sendFrame(proxyId: string, bitmap: ImageBitmap): void {
-	const state = frames.get(proxyId);
-	if (!state) return bitmap.close();
-	if (state.inFlight) {
-		state.pending?.close();
-		state.pending = bitmap;
-		return;
-	}
-	state.inFlight = true;
-	postMessage({ type: WorkerMessageType.FRAME, proxyId, bitmap }, { transfer: [bitmap] });
+function present(canvasId: string, bitmap: ImageBitmap): void {
+	const output = outputs.get(canvasId);
+	if (!output) return bitmap.close();
+	const canvas = output.canvas as OffscreenCanvas;
+	if (canvas.width !== bitmap.width) canvas.width = bitmap.width;
+	if (canvas.height !== bitmap.height) canvas.height = bitmap.height;
+	output.transferFromImageBitmap(bitmap);
 }
 
 async function handle(data: Request): Promise<void> {
@@ -49,9 +44,13 @@ async function handle(data: Request): Promise<void> {
 		if (data.type === WorkerMessageType.INIT) {
 			sharedCanvas ||= new OffscreenCanvas(data.width, data.height);
 			const canvas = sharedCanvas;
-			frames.set(data.proxyId, { inFlight: false });
+			if (data.output) {
+				const output = data.output.getContext('bitmaprenderer');
+				if (!output) throw new Error('ImageBitmap rendering is not supported');
+				outputs.set(data.canvasId, output);
+			}
 			const result = WebGLManager.fromHTMLCanvasElement(canvas as unknown as HTMLCanvasElement, data.width, data.height, () => {
-				sendFrame(data.proxyId, canvas.transferToImageBitmap());
+				present(data.canvasId, canvas.transferToImageBitmap());
 			});
 			if (result.error) throw result.error;
 			managers.set(data.proxyId, result.data);
@@ -66,11 +65,7 @@ async function handle(data: Request): Promise<void> {
 			const method = manager[data.method];
 			if (typeof method !== 'function') throw new Error(`Method ${data.method} not found`);
 			result = await (method as (...args: any[]) => any).apply(manager, data.args);
-			if (data.method === 'destroy') {
-				managers.delete(data.proxyId);
-				frames.get(data.proxyId)?.pending?.close();
-				frames.delete(data.proxyId);
-			}
+			if (data.method === 'destroy') managers.delete(data.proxyId);
 		} else {
 			const fn = new Function('manager', 'frame', 'timeElapsed', `return (${data.fn})(manager, frame, timeElapsed);`);
 			result = await manager.runOnContext(data.key, fn as any, data.onEachFrame);
@@ -84,27 +79,18 @@ async function handle(data: Request): Promise<void> {
 		if (data.async) postMessage({ type: WorkerMessageType.RESPONSE, id: data.id, result });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		if (data.type === WorkerMessageType.INIT) {
-			failures.set(data.proxyId, new Error(message));
-			frames.delete(data.proxyId);
-		}
+		if (data.type === WorkerMessageType.INIT) failures.set(data.proxyId, new Error(message));
 		postMessage({ type: WorkerMessageType.ERROR, id: 'id' in data ? data.id : undefined, error: message });
 	}
 }
 
-addEventListener('message', (event: MessageEvent<Request | Extract<WorkerMessages, { type: WorkerMessageType.FRAME_ACK }>>) => {
+addEventListener('message', (event: MessageEvent<Request | Extract<WorkerMessages, { type: WorkerMessageType.RELEASE }>>) => {
 	const data = event.data;
-	if (!data?.proxyId) return;
-	if (data.type === WorkerMessageType.FRAME_ACK) {
-		const state = frames.get(data.proxyId);
-		if (state) {
-			state.inFlight = false;
-			const bitmap = state.pending;
-			state.pending = undefined;
-			if (bitmap) sendFrame(data.proxyId, bitmap);
-		}
+	if (data?.type === WorkerMessageType.RELEASE) {
+		outputs.delete(data.canvasId);
 		return;
 	}
+	if (!data?.proxyId) return;
 	const queue = (queues.get(data.proxyId) || Promise.resolve()).then(() => handle(data));
 	queues.set(data.proxyId, queue);
 	void queue.finally(() => {

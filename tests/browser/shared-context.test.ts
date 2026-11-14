@@ -54,7 +54,6 @@ describe('shared worker context', () => {
 			await expect(proxies[19].setFragmentShadersAsync(['invalid shader'])).rejects.toThrow('compile Fragment Shader');
 			await proxies[0].destroyAsync();
 			firstDestroyed = true;
-			canvases[19].width = 4;
 			await proxies[19].paintCanvasAsync();
 			await vi.waitFor(() => expect(pixel(canvases[19], 1, 1)).toEqual([255, 0, 0, 255]));
 		} finally {

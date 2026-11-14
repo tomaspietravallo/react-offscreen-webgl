@@ -42,6 +42,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 	const proxyRef = useRef<WebGLManagerProxyType | null>(null);
 	const observerRef = useRef<ResizeObserver | null>(null);
+	const sizeRef = useRef<[number, number]>([0, 0]);
 
 	const setError = useCallback((error: Error) => {
 		setState((prev) => ({
@@ -62,13 +63,17 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		let cancelled = false;
 		const initializeWebGL = async () => {
 			try {
+				let size: [number, number] = [canvas.width, canvas.height];
 				if (!disableResizeObserver) {
 					const rect = canvas.getBoundingClientRect();
 					if (rect.width > 0 && rect.height > 0) {
-						canvas.width = Math.max(1, Math.round(rect.width * window.devicePixelRatio));
-						canvas.height = Math.max(1, Math.round(rect.height * window.devicePixelRatio));
+						size = [
+							Math.max(1, Math.round(rect.width * window.devicePixelRatio)),
+							Math.max(1, Math.round(rect.height * window.devicePixelRatio)),
+						];
 					}
 				}
+				sizeRef.current = size;
 				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 				proxyRef.current = proxy;
 
@@ -114,9 +119,9 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				await proxy.setFrameRateAsync(refreshRate);
 				if (cancelled) return;
 
-				await proxy.updateUniformAsync('u_resolution', [canvas.width, canvas.height]);
+				await proxy.updateUniformAsync('u_resolution', size);
 				if (cancelled) return;
-				await proxy.resizeAsync(canvas.width, canvas.height);
+				await proxy.resizeAsync(size[0], size[1]);
 				if (cancelled) return;
 				setState((prev) => ({
 					...prev,
@@ -190,9 +195,8 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				if (!width || !height) return;
 				const pixelWidth = Math.max(1, Math.round(width * window.devicePixelRatio));
 				const pixelHeight = Math.max(1, Math.round(height * window.devicePixelRatio));
-				if (canvas.width === pixelWidth && canvas.height === pixelHeight) return;
-				canvas.width = pixelWidth;
-				canvas.height = pixelHeight;
+				if (sizeRef.current[0] === pixelWidth && sizeRef.current[1] === pixelHeight) return;
+				sizeRef.current = [pixelWidth, pixelHeight];
 				void (async () => {
 					await proxy.updateUniformAsync('u_resolution', [pixelWidth, pixelHeight]);
 					await proxy.resizeAsync(pixelWidth, pixelHeight);
