@@ -30,7 +30,11 @@ export class WebGLManager {
 	private fragmentShaderGroups: WebGLShader[][] | null = null;
 	private shaderPrograms: WebGLProgram[][] | null = null;
 	private uniformValues: Record<WebGLUniformName, number | number[]> = {};
-	private programUniformStates: Map<WebGLProgram, Record<WebGLUniformName, number | number[]>> = new Map();
+	private uniformVersions: Record<WebGLUniformName, number> = {};
+	private uniformVersion: number = 0;
+	private programUniformStates: Map<WebGLProgram, Record<WebGLUniformName, number>> = new Map();
+	private uniformLocations: Map<WebGLProgram, Record<WebGLUniformName, WebGLUniformLocation | null>> = new Map();
+	private positionLocations: Map<WebGLProgram, number> = new Map();
 
 	private usesPingPongGroups: boolean = false;
 	private programLinked: boolean = false;
@@ -115,6 +119,8 @@ export class WebGLManager {
 			for (const fbo of this.framebuffers || []) fbo.destroy();
 			this.framebuffers = null;
 			this.programUniformStates.clear();
+			this.uniformLocations.clear();
+			this.positionLocations.clear();
 			this.programLinked = false;
 		} catch (e) {
 			console.error('[OffscreenCanvas @ GLManager] Error during cleanup', e);
@@ -226,6 +232,8 @@ export class WebGLManager {
 		this.quadBuffers.forEach((buffer) => this.gl.deleteBuffer(buffer));
 		this.quadBuffers.clear();
 		this.programUniformStates.clear();
+		this.uniformLocations.clear();
+		this.positionLocations.clear();
 		this.fragmentShaderGroups = groups;
 		this.shaderPrograms = programGroups;
 		this.usesPingPongGroups = fragmentShaderGroupSources.length > 1 || fragmentShaderGroupSources.some((group) => group.length > 1);
@@ -316,7 +324,6 @@ export class WebGLManager {
 			for (let shaderIndex = 0; shaderIndex < group.length; shaderIndex++) {
 				const program = programGroup[shaderIndex];
 				const isLastShaderInGroup = shaderIndex === group.length - 1;
-				const isFirstRender = !this.programUniformStates.has(program);
 
 				// For the last shader in the last group, render to canvas (null framebuffer)
 				// For the last shader in other groups, render to pong buffer for next group
@@ -338,13 +345,17 @@ export class WebGLManager {
 				this.gl.useProgram(program);
 				const buffer = this.quadBuffers.get(program);
 				if (buffer) {
-					const position = this.gl.getAttribLocation(program, 'v_position');
+					let position = this.positionLocations.get(program);
+					if (position === undefined) {
+						position = this.gl.getAttribLocation(program, 'v_position');
+						this.positionLocations.set(program, position);
+					}
 					this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
 					this.gl.vertexAttribPointer(position, 3, this.gl.FLOAT, false, 0, 0);
 					this.gl.enableVertexAttribArray(position);
 				}
 				this.gl.activeTexture(this.gl.TEXTURE0);
-				this.setUniformsForProgram(program, isFirstRender);
+				this.setUniformsForProgram(program);
 				this.gl.bindTexture(this.gl.TEXTURE_2D, ping?.texture || null);
 				this.drawArrays();
 
@@ -387,30 +398,43 @@ export class WebGLManager {
 		} else return ok(createWholeScreenQuad(this.gl, this.program));
 	}
 
-	private setUniformsForProgram(program: WebGLProgram, forceUpdate: boolean = false): void {
-		const currentState = this.programUniformStates.get(program) || {};
-
-		for (const [uniformName, value] of Object.entries(this.uniformValues)) {
-			const hasChanged = forceUpdate || JSON.stringify(currentState[uniformName as WebGLUniformName]) !== JSON.stringify(value);
-
-			if (hasChanged) {
-				const location = this.gl.getUniformLocation(program, uniformName);
-				if (location) {
-					if (Array.isArray(value)) {
-						setFloatUniforms(this.gl, location, ...value);
-					} else {
-						setFloatUniforms(this.gl, location, value);
-					}
-					currentState[uniformName as WebGLUniformName] = Array.isArray(value) ? [...value] : value;
-				}
-			}
+	private setUniformsForProgram(program: WebGLProgram): void {
+		let appliedVersions = this.programUniformStates.get(program);
+		if (!appliedVersions) {
+			appliedVersions = {};
+			this.programUniformStates.set(program, appliedVersions);
+		}
+		let locations = this.uniformLocations.get(program);
+		if (!locations) {
+			locations = {};
+			this.uniformLocations.set(program, locations);
 		}
 
-		this.programUniformStates.set(program, currentState);
+		for (const key in this.uniformValues) {
+			const uniformName = key as WebGLUniformName;
+			const version = this.uniformVersions[uniformName];
+			if (appliedVersions[uniformName] === version) continue;
+			appliedVersions[uniformName] = version;
+
+			let location = locations[uniformName];
+			if (location === undefined) {
+				location = this.gl.getUniformLocation(program, uniformName);
+				locations[uniformName] = location;
+			}
+			if (!location) continue;
+
+			const value = this.uniformValues[uniformName];
+			if (Array.isArray(value)) {
+				setFloatUniforms(this.gl, location, ...value);
+			} else {
+				setFloatUniforms(this.gl, location, value);
+			}
+		}
 	}
 
 	public updateUniform(uniform: WebGLUniformName, value: number | number[]): Result<WebGLManager> {
 		this.uniformValues[uniform] = Array.isArray(value) ? [...value] : value;
+		this.uniformVersions[uniform] = ++this.uniformVersion;
 		return ok(this);
 	}
 

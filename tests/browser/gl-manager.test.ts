@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { WebGLManager } from '../../src/offscreen-webgl/gl-manager';
 import { DEFAULT_VS_SHADER } from '../../src/defaults';
 
@@ -201,6 +201,26 @@ describe('WebGLManager (browser)', () => {
 
 		const gl = manager.getGLContext();
 		expect(readPixel(gl, 2, 2)).toEqual([255, 0, 0, 255]);
+	});
+
+	it('looks up uniform locations once and uploads only changed uniforms', () => {
+		manager = buildManager(UNIFORM_COLOR_FS);
+		const gl = manager.getGLContext();
+		manager.updateUniform('u_color', [1, 0, 0]);
+		manager.updateUniform('u_unused', 1);
+		manager.paintCanvas();
+
+		const getUniformLocation = vi.spyOn(gl, 'getUniformLocation');
+		const uniform3f = vi.spyOn(gl, 'uniform3f');
+		for (let i = 0; i < 10; i++) manager.paintCanvas();
+		expect(getUniformLocation).not.toHaveBeenCalled();
+		expect(uniform3f).not.toHaveBeenCalled();
+
+		manager.updateUniform('u_color', [0, 1, 0]);
+		manager.paintCanvas();
+		expect(getUniformLocation).not.toHaveBeenCalled();
+		expect(uniform3f).toHaveBeenCalledTimes(1);
+		expect(readPixel(gl, 1, 1)).toEqual([0, 255, 0, 255]);
 	});
 
 	// ── Shader compilation failure ──────────────────────────────────────────
