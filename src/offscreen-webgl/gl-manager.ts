@@ -18,7 +18,7 @@ export class WebGLManager {
 	private gl: WebGLRenderingContext;
 	private width: number;
 	private height: number;
-	private onPaint?: () => void;
+	private onPaint?: (width: number, height: number) => void;
 	private quadBuffers = new Map<WebGLProgram, WebGLBuffer>();
 	private program: WebGLProgram | null = null;
 	private vertexShader: WebGLShader | null = null;
@@ -35,7 +35,12 @@ export class WebGLManager {
 	private usesPingPongGroups: boolean = false;
 	private programLinked: boolean = false;
 
-	public constructor(canvas: HTMLCanvasElement, width = canvas.width, height = canvas.height, onPaint?: () => void) {
+	public constructor(
+		canvas: HTMLCanvasElement,
+		width = canvas.width,
+		height = canvas.height,
+		onPaint?: (width: number, height: number) => void
+	) {
 		this.canvas = canvas;
 		this.width = width;
 		this.height = height;
@@ -66,7 +71,7 @@ export class WebGLManager {
 		canvas: HTMLCanvasElement,
 		width = canvas.width,
 		height = canvas.height,
-		onPaint?: () => void
+		onPaint?: (width: number, height: number) => void
 	): Result<WebGLManager> {
 		try {
 			return ok(new WebGLManager(canvas, width, height, onPaint));
@@ -263,10 +268,10 @@ export class WebGLManager {
 
 	public paintCanvas(): Result<WebGLManager> {
 		if (this.shaderPrograms && this.fragmentShaderGroups) {
-			if (this.canvas.width !== this.width) this.canvas.width = this.width;
-			if (this.canvas.height !== this.height) this.canvas.height = this.height;
+			if (this.canvas.width < this.width) this.canvas.width = this.width;
+			if (this.canvas.height < this.height) this.canvas.height = this.height;
 			const result = this.renderWithFragmentShaderGroups();
-			if (!result.error) this.onPaint?.();
+			if (!result.error) this.onPaint?.(this.width, this.height);
 			return result;
 		}
 

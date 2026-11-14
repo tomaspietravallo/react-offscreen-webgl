@@ -28,15 +28,18 @@ const managers = new Map<string, WebGLManager>();
 const failures = new Map<string, Error>();
 const queues = new Map<string, Promise<void>>();
 let sharedCanvas: OffscreenCanvas | undefined;
-const outputs = new Map<string, ImageBitmapRenderingContext>();
+const outputs = new Map<string, OffscreenCanvasRenderingContext2D>();
 
-function present(canvasId: string, bitmap: ImageBitmap): void {
+function present(canvasId: string, source: OffscreenCanvas, width: number, height: number): void {
 	const output = outputs.get(canvasId);
-	if (!output) return bitmap.close();
-	const canvas = output.canvas as OffscreenCanvas;
-	if (canvas.width !== bitmap.width) canvas.width = bitmap.width;
-	if (canvas.height !== bitmap.height) canvas.height = bitmap.height;
-	output.transferFromImageBitmap(bitmap);
+	if (!output) return;
+	const canvas = output.canvas;
+	if (canvas.width !== width || canvas.height !== height) {
+		canvas.width = width;
+		canvas.height = height;
+		output.globalCompositeOperation = 'copy';
+	}
+	output.drawImage(source, 0, source.height - height, width, height, 0, 0, width, height);
 }
 
 async function handle(data: Request): Promise<void> {
@@ -45,13 +48,17 @@ async function handle(data: Request): Promise<void> {
 			sharedCanvas ||= new OffscreenCanvas(data.width, data.height);
 			const canvas = sharedCanvas;
 			if (data.output) {
-				const output = data.output.getContext('bitmaprenderer');
-				if (!output) throw new Error('ImageBitmap rendering is not supported');
+				const output = data.output.getContext('2d');
+				if (!output) throw new Error('2D canvas rendering is not supported');
+				output.globalCompositeOperation = 'copy';
 				outputs.set(data.canvasId, output);
 			}
-			const result = WebGLManager.fromHTMLCanvasElement(canvas as unknown as HTMLCanvasElement, data.width, data.height, () => {
-				present(data.canvasId, canvas.transferToImageBitmap());
-			});
+			const result = WebGLManager.fromHTMLCanvasElement(
+				canvas as unknown as HTMLCanvasElement,
+				data.width,
+				data.height,
+				(width, height) => present(data.canvasId, canvas, width, height)
+			);
 			if (result.error) throw result.error;
 			managers.set(data.proxyId, result.data);
 			failures.delete(data.proxyId);

@@ -60,4 +60,36 @@ describe('shared worker context', () => {
 			await Promise.all(proxies.slice(firstDestroyed ? 1 : 0).map((proxy) => proxy.destroyAsync()));
 		}
 	});
+
+	it('presents the right region when canvases of different sizes share the context', async () => {
+		const sizes: [number, number][] = [
+			[4, 4],
+			[16, 2],
+			[2, 16],
+		];
+		const canvases = sizes.map(() => document.createElement('canvas'));
+		const proxies = canvases.map((canvas) => new WebGLManagerProxy(canvas));
+		try {
+			await Promise.all(
+				proxies.map(async (proxy, index) => {
+					const [width, height] = sizes[index];
+					await proxy.setVertexShaderAsync(DEFAULT_VS_SHADER);
+					await proxy.setFragmentShadersAsync([gradient]);
+					await proxy.setupWholeScreenQuadAsync();
+					await proxy.updateUniformAsync('u_resolution', [width, height]);
+					await proxy.resizeAsync(width, height);
+				})
+			);
+			await proxies[0].paintCanvasAsync();
+			await vi.waitFor(() => {
+				expect([canvases[0].width, canvases[0].height]).toEqual([4, 4]);
+				expect(pixel(canvases[0], 0, 3)).toEqual([32, 32, 0, 255]);
+				expect(pixel(canvases[0], 3, 0)).toEqual([223, 223, 0, 255]);
+				expect(pixel(canvases[1], 15, 0)).toEqual([247, 191, 0, 255]);
+				expect(pixel(canvases[2], 0, 15)).toEqual([64, 8, 0, 255]);
+			});
+		} finally {
+			await Promise.all(proxies.map((proxy) => proxy.destroyAsync()));
+		}
+	});
 });
