@@ -1,5 +1,6 @@
 import { err, ok, Result } from '../utils/try-catch';
 import { createShaderFromSource, createWholeScreenQuad, setFloatUniforms } from '../utils/webgl';
+import { FrameTask, scheduleFrames } from './frame-scheduler';
 
 export type WebGLUniformName = `u_${string}`;
 
@@ -11,6 +12,7 @@ export class WebGLManager {
 	public static readonly DEFAULT_FRAME_RATE = 30;
 	private frame: number = 0;
 	private timeElapsed: number = 0;
+	private startTime: number | null = null;
 	private onEachFrameFunctions: Record<string, RunOnWorkerContextFn> = {};
 	private canvas: HTMLCanvasElement;
 	private gl: WebGLRenderingContext;
@@ -21,7 +23,7 @@ export class WebGLManager {
 	private program: WebGLProgram | null = null;
 	private vertexShader: WebGLShader | null = null;
 	private fragmentShaders: WebGLShader[] | null = null;
-	private interval: number | null = null;
+	private frameTask: FrameTask | null = null;
 
 	private framebuffers: [FrameBufferObject, FrameBufferObject] | null = null;
 
@@ -75,10 +77,8 @@ export class WebGLManager {
 	}
 
 	public destroy(): Result<WebGLManager> {
-		if (this.interval !== null) {
-			clearInterval(this.interval);
-			this.interval = null;
-		}
+		this.frameTask?.cancel();
+		this.frameTask = null;
 		try {
 			if (this.program) {
 				this.gl.deleteProgram(this.program);
@@ -452,18 +452,20 @@ export class WebGLManager {
 			return err(new Error('[OffscreenCanvas @ GLManager] Frame rate must be greater than 0'));
 		}
 		const interval = 1000 / frameRate;
-		if (this.interval) {
-			clearInterval(this.interval);
+		if (this.frameTask) {
+			this.frameTask.interval = interval;
+			return ok(this);
 		}
-		this.interval = setInterval(() => {
+		this.frameTask = scheduleFrames(interval, (now) => {
+			this.startTime ??= now;
 			this.frame++;
-			this.timeElapsed += interval;
+			this.timeElapsed = now - this.startTime;
 			let arr = Object.values(this.onEachFrameFunctions);
 
 			for (let i = 0; i < arr.length; i++) {
 				arr[i](this, this.frame, this.timeElapsed);
 			}
-		}, interval);
+		});
 		return ok(this);
 	}
 }
