@@ -10,15 +10,17 @@ export enum WorkerMessageType {
 	RESPONSE = 'RESPONSE',
 	EVAL_FN = 'EVAL_FN',
 	RELEASE = 'RELEASE',
+	BATCH = 'BATCH',
 }
 
 export type WorkerMessages =
 	| { proxyId: string; type: WorkerMessageType.INIT; canvasId: string; output?: OffscreenCanvas; width: number; height: number }
 	| { type: WorkerMessageType.RELEASE; canvasId: string }
 	| { type: WorkerMessageType.ERROR; id?: string; error: string }
-	| { type: WorkerMessageType.CALL_METHOD; proxyId: string; id: string; method: keyof WebGLManager; args: any[]; async?: boolean }
+	| { type: WorkerMessageType.CALL_METHOD; proxyId: string; id?: string; method: keyof WebGLManager; args: any[]; async?: boolean }
 	| { type: WorkerMessageType.RESPONSE; id: string; result?: any; error?: string }
-	| { type: WorkerMessageType.EVAL_FN; proxyId: string; key: string; id: string; fn: string; onEachFrame?: boolean; async?: boolean };
+	| { type: WorkerMessageType.EVAL_FN; proxyId: string; key: string; id?: string; fn: string; onEachFrame?: boolean; async?: boolean }
+	| { type: WorkerMessageType.BATCH; messages: WorkerMessages[] };
 
 type Request = Extract<
 	WorkerMessages,
@@ -83,7 +85,7 @@ async function handle(data: Request): Promise<void> {
 			// Manager and WebGL objects cannot be cloned across the worker boundary.
 			result = null;
 		}
-		if (data.async) postMessage({ type: WorkerMessageType.RESPONSE, id: data.id, result });
+		if (data.async && data.id) postMessage({ type: WorkerMessageType.RESPONSE, id: data.id, result });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		if (data.type === WorkerMessageType.INIT) failures.set(data.proxyId, new Error(message));
@@ -91,16 +93,18 @@ async function handle(data: Request): Promise<void> {
 	}
 }
 
-addEventListener('message', (event: MessageEvent<Request | Extract<WorkerMessages, { type: WorkerMessageType.RELEASE }>>) => {
-	const data = event.data;
+function dispatch(data: WorkerMessages): void {
+	if (data?.type === WorkerMessageType.BATCH) return data.messages.forEach(dispatch);
 	if (data?.type === WorkerMessageType.RELEASE) {
 		outputs.delete(data.canvasId);
 		return;
 	}
-	if (!data?.proxyId) return;
+	if (!data || !('proxyId' in data)) return;
 	const queue = (queues.get(data.proxyId) || Promise.resolve()).then(() => handle(data));
 	queues.set(data.proxyId, queue);
 	void queue.finally(() => {
 		if (queues.get(data.proxyId) === queue) queues.delete(data.proxyId);
 	});
-});
+}
+
+addEventListener('message', (event: MessageEvent<WorkerMessages>) => dispatch(event.data));

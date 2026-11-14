@@ -414,6 +414,11 @@ export class WebGLManager {
 		return ok(this);
 	}
 
+	public updateUniforms(values: Record<WebGLUniformName, number | number[]>): Result<WebGLManager> {
+		for (const [uniform, value] of Object.entries(values)) this.updateUniform(uniform as WebGLUniformName, value);
+		return ok(this);
+	}
+
 	public checkWebGLVitals(): Result<WebGLManager> {
 		if (!this.gl) {
 			return err(new Error('[OffscreenCanvas @ GLManager] WebGL context not available'));

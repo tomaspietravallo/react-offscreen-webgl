@@ -19,6 +19,7 @@ class WebGLManagerProxyClass {
 	private static releasedCanvases = new FinalizationRegistry<string>((canvasId) => {
 		WebGLManagerProxyClass.worker?.postMessage({ type: WorkerMessageType.RELEASE, canvasId } satisfies WorkerMessages);
 	});
+	private static queuedMessages: WorkerMessages[] = [];
 	private static pendingResponses: Record<string, { resolve: (value: any) => void; reject: (error: Error) => void }> = {};
 	private readonly PROXY_ID = `WebGLManagerProxy-${uuidv4()}`;
 
@@ -54,6 +55,7 @@ class WebGLManagerProxyClass {
 			WebGLManagerProxyClass.canvasIds.set(canvas, canvasId);
 			WebGLManagerProxyClass.releasedCanvases.register(canvas, canvasId);
 		}
+		WebGLManagerProxyClass.flush();
 		WebGLManagerProxyClass.worker.postMessage(
 			{
 				type: WorkerMessageType.INIT,
@@ -114,16 +116,28 @@ class WebGLManagerProxyClass {
 		}
 	}
 
+	private static enqueue(message: WorkerMessages): void {
+		const queue = WebGLManagerProxyClass.queuedMessages;
+		queue.push(message);
+		if (queue.length === 1) queueMicrotask(WebGLManagerProxyClass.flush);
+	}
+
+	private static flush(): void {
+		const messages = WebGLManagerProxyClass.queuedMessages;
+		if (!messages.length) return;
+		WebGLManagerProxyClass.queuedMessages = [];
+		WebGLManagerProxyClass.worker?.postMessage(
+			messages.length === 1 ? messages[0] : ({ type: WorkerMessageType.BATCH, messages } satisfies WorkerMessages)
+		);
+	}
+
 	public callMethod<ManagerMethod extends keyof WebGLManager>(method: ManagerMethod, ...args: any[]): void {
-		const id = uuidv4();
-		WebGLManagerProxyClass.worker?.postMessage({
+		WebGLManagerProxyClass.enqueue({
 			type: WorkerMessageType.CALL_METHOD,
 			proxyId: this.PROXY_ID,
 			method,
 			args,
-			id,
-		} as WorkerMessages);
-		return;
+		});
 	}
 
 	public callMethodAsync<ManagerMethod extends keyof WebGLManager>(
@@ -142,16 +156,13 @@ class WebGLManagerProxyClass {
 	}
 
 	public runOnContext(key: string, fn: RunOnWorkerContextFn, onEachFrame: boolean = false) {
-		const id = uuidv4();
-		WebGLManagerProxyClass.worker?.postMessage({
+		WebGLManagerProxyClass.enqueue({
 			type: WorkerMessageType.EVAL_FN,
 			fn: fn.toString(),
 			onEachFrame,
-			id,
 			proxyId: this.PROXY_ID,
 			key,
-		} as WorkerMessages);
-		return;
+		});
 	}
 
 	public runOnContextAsync<T>(key: string, fn: RunOnWorkerContextFn<T>, onEachFrame: boolean = false) {
@@ -173,6 +184,7 @@ class WebGLManagerProxyClass {
 			try {
 				if (WebGLManagerProxyClass.workerFailure) throw WebGLManagerProxyClass.workerFailure;
 				if (!WebGLManagerProxyClass.worker) throw new Error('WebGL worker is unavailable');
+				WebGLManagerProxyClass.flush();
 				WebGLManagerProxyClass.worker.postMessage(message);
 			} catch (error) {
 				delete WebGLManagerProxyClass.pendingResponses[id];
