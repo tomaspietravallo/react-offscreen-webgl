@@ -121,11 +121,27 @@ You can also load a shader with `fragmentShaderURL`. URL paths beginning with `/
 
 ## Uniforms
 
-Pass a number for a float, or an array of two, three, or four numbers for a vector. The component sets `u_resolution` to the canvas pixel dimensions and updates it on resize.
+Pass uniforms as top-level props. With TypeScript 5.4 or later, for a literal shader string, TypeScript infers names and checks values without a helper. Uniforms are optional; vector values must be tuples of the corresponding length. The component manages `u_resolution` in canvas pixels and updates it on resize.
 
 ```tsx
-<OffscreenWebGL fragmentShader={shader} u_intensity={0.8} u_offset={[0.5, 0.25]} />
+const colorShader = `
+  precision highp float;
+  uniform vec3 u_color;
+  uniform float u_opacity;
+  void main() { gl_FragColor = vec4(u_color, u_opacity); }
+`;
+
+// Correct
+<OffscreenWebGL fragmentShader={colorShader} u_color={[1, 0.4, 0.2]} u_opacity={0.8} />;
+
+// Type error: uniform with mismatched dimension
+<OffscreenWebGL fragmentShader={colorShader} u_color={[1, 0.4]} u_opacity={0.8} />;
+
+// Type error: uniform typo (u_color vs u_colour)
+<OffscreenWebGL fragmentShader={colorShader} u_colour={[1, 0.4, 0.2]} u_opacity={0.8} />;
 ```
+
+Inference supports `float`, `vec2`, `vec3`, and `vec4`, optional precision qualifiers, comma-separated declarations and comments. It combines the vertex shader and all literal fragment groups. Uniforms must start with `u_`. Source that is dynamic, fetched from a URL, exceeding the bounded parser budget (up to about 4,096 characters or 128 comment/declaration scan steps), contains a preprocessor directive or uses unsupported declarations (such as arrays, matrices, samplers or structs) falls back to broad `u_*` props; these cases do not get source-based type checking. Only float and float-vector values are supported by the renderer. Shader compilation and linking are still checked at runtime.
 
 </section>
 

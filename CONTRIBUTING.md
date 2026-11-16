@@ -31,7 +31,15 @@ Be sure to format the code before submitting changes in order to preserve the co
 
 ### Tests
 
-At this point in time, there are no automated tests for this package. The `/tests/vite` folder contains a barebones vite react app with an OffscreenWebGL component instance that can be used to verify things behave as expected. In the future, it'd be nice to have more use cases covered and automated tests
+Install dependencies with `npm ci`, then run the type checks and Attest benchmarks with:
+
+```sh
+npm run test:types
+npm run test:attest
+npm run bench:types
+```
+
+The benchmark fails when type instantiations exceed a checked-in baseline by more than 20%. Use the lockfile to keep TypeScript and Attest versions consistent.
 
 ## Publishing
 
