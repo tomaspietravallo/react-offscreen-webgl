@@ -483,3 +483,67 @@ footer span:first-child {
 		display: none;
 	}
 }
+
+.release-versions {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	margin: 25px 0;
+}
+.release-card {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 22px;
+	border: 1px solid #343439;
+	border-radius: 4px;
+	text-decoration: none;
+}
+.release-card.is-animating {
+	border-color: transparent;
+	background-image:
+		linear-gradient(#0a0a0b, #0a0a0b),
+		linear-gradient(to right, #343439 0%, #343439 20%, #ff5555 36%, #62ef80 52%, #6b96ff 68%, #343439 80%, #343439 100%);
+	background-origin: border-box;
+	background-clip: padding-box, border-box;
+	background-size:
+		100% 100%,
+		500% 100%;
+	animation: release-spectrum 1.2s linear;
+}
+@keyframes release-spectrum {
+	from {
+		background-position:
+			0 0,
+			0% 0;
+	}
+	to {
+		background-position:
+			0 0,
+			100% 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.release-card:hover,
+	.release-card:focus-within {
+		border-color: #bebec5;
+	}
+}
+.release-tag {
+	font:
+		12px 'Geist Mono Variable',
+		monospace;
+	letter-spacing: 0.09em;
+	color: #a0a0a8;
+}
+.release-version {
+	font-size: 20px;
+	font-weight: 600;
+	color: #f4f4f6;
+}
+
+.release-notes {
+	border-top: 1px solid #343439;
+	padding-top: 14px;
+	color: #bcbcc3;
+	font-size: 14px;
+}

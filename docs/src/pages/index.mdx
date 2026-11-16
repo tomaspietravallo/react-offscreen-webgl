@@ -3,6 +3,7 @@ layout: ../layouts/Docs.astro
 ---
 
 import ShaderDemo from '../components/ShaderDemo.jsx';
+import ReleaseVersions from '../components/ReleaseVersions.astro';
 import { ArrowUpRight } from 'lucide-react';
 import { siGithub } from 'simple-icons';
 
@@ -171,6 +172,18 @@ Pass nested arrays to `fragmentShader` or `fragmentShaderURL` to configure shade
 - Media and camera textures are not yet supported.
 - The library requires the browser features listed above. The example needs WebGL enabled to render.
 
-For more detail and updates, see [GitHub](https://github.com/tomaspietravallo/react-offscreen-webgl) and [Releases](https://github.com/tomaspietravallo/react-offscreen-webgl/releases).
+
+</section>
+
+<section id="versions">
+<div className="section-number">09</div>
+
+## Versions and releases
+
+Releases follow [Semantic Versioning](https://semver.org/). The npm `latest` tag identifies the current release.
+
+<ReleaseVersions />
+
+Browse the [npm version history](https://www.npmjs.com/package/react-offscreen-webgl?activeTab=versions) and [GitHub releases](https://github.com/tomaspietravallo/react-offscreen-webgl/releases) for more details.
 
 </section>

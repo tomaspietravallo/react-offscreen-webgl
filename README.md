@@ -1,5 +1,8 @@
 # react-offscreen-webgl
 
+[![npm latest version](https://img.shields.io/npm/v/react-offscreen-webgl?label=npm%20latest)](https://www.npmjs.com/package/react-offscreen-webgl)
+[![npm license](https://img.shields.io/npm/l/react-offscreen-webgl)](https://www.npmjs.com/package/react-offscreen-webgl)
+
 Render WebGL fragment shaders in React with an OffscreenCanvas and a shared Web Worker.
 
 > [!WARNING]

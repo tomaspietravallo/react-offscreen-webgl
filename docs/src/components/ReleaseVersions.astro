@@ -1,0 +1,85 @@
+<div class="release-versions" aria-label="npm version">
+  <div class="release-card">
+    <span class="release-tag">NPM / LATEST</span>
+    <span class="release-version" data-version-status role="status">Loading version…</span>
+    <a href="https://www.npmjs.com/package/react-offscreen-webgl">View on npm</a>
+    <div class="release-notes">
+      <span data-release-status role="status">Waiting for version…</span>
+      <a data-release-link hidden>View release notes on GitHub</a>
+    </div>
+  </div>
+</div>
+<noscript>Enable JavaScript to load the current version and its release notes.</noscript>
+<script>
+  const card = document.querySelector('.release-card');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const animateCard = () => {
+    if (!reducedMotion.matches) card?.classList.add('is-animating');
+  };
+  const clearCard = (event: Event) => {
+    if (event instanceof AnimationEvent && event.animationName === 'release-spectrum') {
+      card?.classList.remove('is-animating');
+    }
+  };
+  card?.addEventListener('pointerenter', animateCard);
+  card?.addEventListener('focusin', animateCard);
+  card?.addEventListener('animationend', clearCard);
+  card?.addEventListener('animationcancel', clearCard);
+
+  const versionStatus = document.querySelector('[data-version-status]');
+  const releaseStatus = document.querySelector('[data-release-status]');
+  const releaseLink = document.querySelector('[data-release-link]');
+
+  async function fetchWithTimeout(url: string, options: RequestInit = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function loadRelease() {
+    if (!(versionStatus && releaseStatus && releaseLink instanceof HTMLAnchorElement)) return;
+    let version: string;
+    try {
+      const response = await fetchWithTimeout('https://registry.npmjs.org/react-offscreen-webgl', {
+        headers: { Accept: 'application/vnd.npm.install-v1+json' },
+      });
+      if (!response.ok) throw new Error('npm registry request failed');
+      const metadata = await response.json();
+      if (typeof metadata['dist-tags']?.latest !== 'string' || !metadata['dist-tags'].latest) {
+        throw new Error('npm latest tag is missing');
+      }
+      version = metadata['dist-tags'].latest;
+      versionStatus.textContent = `v${version}`;
+    } catch {
+      versionStatus.textContent = 'Version unavailable';
+      releaseStatus.textContent = 'Release notes unavailable without a version.';
+      return;
+    }
+
+    releaseStatus.textContent = 'Loading release notes…';
+    const tag = `v${version}`;
+    try {
+      const response = await fetchWithTimeout(
+        `https://api.github.com/repos/tomaspietravallo/react-offscreen-webgl/releases/tags/${encodeURIComponent(tag)}`
+      );
+      if (response.status === 404) {
+        releaseStatus.textContent = 'No GitHub release notes for this version.';
+        return;
+      }
+      if (!response.ok) throw new Error('GitHub release request failed');
+      const release = await response.json();
+      if (release.tag_name !== tag) throw new Error('GitHub release tag mismatch');
+      releaseLink.href = `https://github.com/tomaspietravallo/react-offscreen-webgl/releases/tag/${encodeURIComponent(tag)}`;
+      releaseLink.hidden = false;
+      releaseStatus.textContent = '';
+    } catch {
+      releaseStatus.textContent = 'Could not load release notes. Please try again later.';
+    }
+  }
+
+  void loadRelease();
+</script>
