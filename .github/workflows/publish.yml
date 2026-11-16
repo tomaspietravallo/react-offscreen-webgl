@@ -3,9 +3,11 @@ name: Release and publish
 on:
     push:
         branches: [main]
+    pull_request:
+        branches: [main]
 
 concurrency:
-    group: npm-publish-main
+    group: ${{ github.event_name == 'push' && 'npm-publish-main' || format('package-tests-pr-{0}', github.event.pull_request.number) }}
     queue: max
 
 permissions:
@@ -13,6 +15,7 @@ permissions:
 
 jobs:
     test:
+        name: Package tests
         runs-on: ubuntu-24.04
         steps:
             - uses: actions/checkout@v6
@@ -26,6 +29,7 @@ jobs:
             - run: npm run test:browser
 
     release:
+        if: github.event_name == 'push'
         needs: test
         runs-on: ubuntu-24.04
         permissions:
