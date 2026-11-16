@@ -11,3 +11,6 @@
 # Documentation build
 /docs/dist
 /docs/.astro
+
+# Attest cache
+.attest
