@@ -40,7 +40,7 @@ void main() { gl_FragColor = vec4(u_color, 1.0); }`;
 		const container = document.createElement('div');
 		document.body.appendChild(container);
 		const root = createRoot(container);
-		const render = (color: number[]) =>
+		const render = (color: readonly [number, number, number]) =>
 			root.render(
 				createElement(
 					'div',
@@ -73,6 +73,13 @@ void main() { gl_FragColor = vec4(u_color, 1.0); }`;
 			render([0, 1, 0]);
 			await vi.waitFor(() => expect(pixel(canvas)).toEqual([0, 255, 0, 255]));
 			expect(postMessage).toHaveBeenCalledTimes(1);
+			const mutable: [number, number, number] = [0, 1, 0];
+			render(mutable);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			mutable[1] = 0;
+			mutable[2] = 1;
+			render(mutable);
+			await vi.waitFor(() => expect(pixel(canvas)).toEqual([0, 0, 255, 255]));
 		} finally {
 			postMessage.mockRestore();
 			root.unmount();
