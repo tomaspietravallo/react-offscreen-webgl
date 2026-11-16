@@ -6,7 +6,7 @@ on:
     pull_request:
 
 concurrency:
-    group: ${{ github.event_name == 'push' && 'npm-publish-main' || format('package-tests-pr-{0}', github.event.pull_request.number) }}
+    group: ${{ github.event_name == 'push' && 'npm-publish-main' || format('package-tests-pr-{0}-{1}', github.event.pull_request.number, github.sha) }}
     queue: max
 
 permissions:
@@ -20,9 +20,16 @@ jobs:
             - uses: actions/checkout@v6
             - uses: actions/setup-node@v6
               with:
-                  node-version: '24'
+                  node-version: '26.13.0'
                   cache: 'npm'
             - run: npm ci
+            - name: Get Playwright version
+              id: playwright-version
+              run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium
             - run: npx playwright install --with-deps chromium
             - run: npm run test:types
             - run: npm run test:attest
@@ -43,7 +50,7 @@ jobs:
                   fetch-depth: 0
             - uses: actions/setup-node@v6
               with:
-                  node-version: '24'
+                  node-version: '26.13.0'
                   package-manager-cache: false
             - run: npm ci
             - run: npm run build
