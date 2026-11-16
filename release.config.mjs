@@ -7,6 +7,7 @@ export default {
 				preset: 'conventionalcommits',
 				releaseRules: [
 					{ type: 'ci', release: false },
+					{ type: 'test', release: false },
 					{ type: 'docs', release: false },
 					{ type: 'chore', release: false },
 					{ type: 'hotfix', breaking: true, release: 'major' },
@@ -26,6 +27,7 @@ export default {
 						{ type: 'feat', section: 'Features' },
 						{ type: 'fix', section: 'Bug fixes' },
 						{ type: 'hotfix', section: 'Bug fixes' },
+						{ type: 'perf', section: 'Performance improvements' },
 					],
 				},
 			},
