@@ -41,7 +41,7 @@ import { siGithub } from 'simple-icons';
 
 ## Overview
 
-Each component creates a canvas in the DOM. A shared worker renders the shaders using one WebGL context on an `OffscreenCanvas`, then transfers frames as `ImageBitmap`s to the component canvases. Each component has its own shaders, uniforms, frame rate, and buffers.
+Each component creates a canvas in the DOM. Each canvas is transferred to a shared worker, which renders the shaders using one WebGL context on an `OffscreenCanvas` and presents frames to the component canvases without involving the main thread. Each component has its own shaders, uniforms, frame rate, and buffers.
 
 <div className="feature-grid"><div><span>01</span><h3>Off the main thread</h3><p>The render loop runs in a worker, leaving the main thread free for your interface.</p></div><div><span>02</span><h3>Made for React</h3><p>Use a component and pass shader uniforms as props.</p></div><div><span>03</span><h3>One shared context</h3><p>Multiple canvases share a WebGL context, with frame transfer and memory costs.</p></div></div>
 </section>
@@ -57,7 +57,7 @@ Install the package in a React project. React 17 or later is required.
 npm install react-offscreen-webgl
 ```
 
-The package is alpha software and its API may change. The browser must support Web Workers, OffscreenCanvas, WebGL, and `ImageBitmapRenderingContext`.
+The package is alpha software and its API may change. The browser must support Web Workers, OffscreenCanvas, and WebGL.
 
 </section>
 
@@ -168,7 +168,7 @@ Pass nested arrays to `fragmentShader` or `fragmentShaderURL` to configure shade
 
 - The component is browser-only. In an SSR framework, load it on the client (for example, a dynamic import with SSR disabled).
 - Worker callbacks share WebGL state; restore state you change so other components are unaffected.
-- Media and camera textures are not yet supported. Frame transfers also add memory and copy costs.
+- Media and camera textures are not yet supported.
 - The library requires the browser features listed above. The example needs WebGL enabled to render.
 
 For more detail and updates, see [GitHub](https://github.com/tomaspietravallo/react-offscreen-webgl) and [Releases](https://github.com/tomaspietravallo/react-offscreen-webgl/releases).

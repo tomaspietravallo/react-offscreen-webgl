@@ -32,4 +32,51 @@ describe('OffscreenWebGL', () => {
 			container.remove();
 		}
 	});
+
+	it('only messages the worker when uniform values change', async () => {
+		const shader = `precision mediump float;
+uniform vec3 u_color;
+void main() { gl_FragColor = vec4(u_color, 1.0); }`;
+		const container = document.createElement('div');
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const render = (color: number[]) =>
+			root.render(
+				createElement(
+					'div',
+					{ style: { width: '4px', height: '4px' } },
+					createElement(OffscreenWebGL, { fragmentShader: shader, u_color: color })
+				)
+			);
+		const pixel = (canvas: HTMLCanvasElement) => {
+			const copy = document.createElement('canvas');
+			copy.width = canvas.width;
+			copy.height = canvas.height;
+			const context = copy.getContext('2d')!;
+			context.drawImage(canvas, 0, 0);
+			return Array.from(context.getImageData(0, 0, 1, 1).data);
+		};
+		const postMessage = vi.spyOn(Worker.prototype, 'postMessage');
+		try {
+			render([1, 0, 0]);
+			const canvas = await vi.waitFor(() => {
+				const canvas = container.querySelector('canvas')!;
+				expect(canvas.dataset.ready).toBe('true');
+				return canvas;
+			});
+			await vi.waitFor(() => expect(pixel(canvas)).toEqual([255, 0, 0, 255]));
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			postMessage.mockClear();
+			for (let i = 0; i < 10; i++) render([1, 0, 0]);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			expect(postMessage).not.toHaveBeenCalled();
+			render([0, 1, 0]);
+			await vi.waitFor(() => expect(pixel(canvas)).toEqual([0, 255, 0, 255]));
+			expect(postMessage).toHaveBeenCalledTimes(1);
+		} finally {
+			postMessage.mockRestore();
+			root.unmount();
+			container.remove();
+		}
+	});
 });

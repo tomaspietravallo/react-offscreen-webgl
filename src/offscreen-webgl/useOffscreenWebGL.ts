@@ -42,6 +42,9 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 	const proxyRef = useRef<WebGLManagerProxyType | null>(null);
 	const observerRef = useRef<ResizeObserver | null>(null);
+	const sizeRef = useRef<[number, number]>([0, 0]);
+	const sentUniformsRef = useRef<Record<WebGLUniformName, number | number[]>>({});
+	const sentFunctionsRef = useRef<Record<string, string>>({});
 
 	const setError = useCallback((error: Error) => {
 		setState((prev) => ({
@@ -62,13 +65,17 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		let cancelled = false;
 		const initializeWebGL = async () => {
 			try {
+				let size: [number, number] = [canvas.width, canvas.height];
 				if (!disableResizeObserver) {
 					const rect = canvas.getBoundingClientRect();
 					if (rect.width > 0 && rect.height > 0) {
-						canvas.width = Math.max(1, Math.round(rect.width * window.devicePixelRatio));
-						canvas.height = Math.max(1, Math.round(rect.height * window.devicePixelRatio));
+						size = [
+							Math.max(1, Math.round(rect.width * window.devicePixelRatio)),
+							Math.max(1, Math.round(rect.height * window.devicePixelRatio)),
+						];
 					}
 				}
+				sizeRef.current = size;
 				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 				proxyRef.current = proxy;
 
@@ -101,22 +108,22 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				await proxy.setupWholeScreenQuadAsync();
 				if (cancelled) return;
 
-				for (const [key, value] of Object.entries(uniforms)) {
-					await proxy.updateUniformAsync(key as WebGLUniformName, value);
-					if (cancelled) return;
-				}
+				await proxy.updateUniformsAsync(uniforms);
+				if (cancelled) return;
+				sentUniformsRef.current = { ...uniforms };
 
 				for (const [key, fn] of Object.entries(functions)) {
 					await proxy.runOnContextAsync(key, fn, key.includes('each'));
 					if (cancelled) return;
 				}
+				sentFunctionsRef.current = Object.fromEntries(Object.entries(functions).map(([key, fn]) => [key, fn.toString()]));
 
 				await proxy.setFrameRateAsync(refreshRate);
 				if (cancelled) return;
 
-				await proxy.updateUniformAsync('u_resolution', [canvas.width, canvas.height]);
+				await proxy.updateUniformAsync('u_resolution', size);
 				if (cancelled) return;
-				await proxy.resizeAsync(canvas.width, canvas.height);
+				await proxy.resizeAsync(size[0], size[1]);
 				if (cancelled) return;
 				setState((prev) => ({
 					...prev,
@@ -143,18 +150,14 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	useEffect(() => {
 		if (!state.isReady || !proxyRef.current) return;
 
-		const updateUniforms = async () => {
-			try {
-				for (const [key, value] of Object.entries(uniforms)) {
-					await proxyRef.current!.updateUniformAsync(key as WebGLUniformName, value);
-				}
-				await proxyRef.current!.paintCanvasAsync();
-			} catch (error) {
-				setError(error as Error);
-			}
-		};
-
-		updateUniforms();
+		const sent = sentUniformsRef.current;
+		const changed = Object.fromEntries(
+			Object.entries(uniforms).filter(([key, value]) => !uniformValuesEqual(sent[key as WebGLUniformName], value))
+		) as Record<WebGLUniformName, number | number[]>;
+		if (!Object.keys(changed).length) return;
+		Object.assign(sent, changed);
+		proxyRef.current.updateUniforms(changed);
+		proxyRef.current.paintCanvas();
 	}, [uniforms, state.isReady]);
 
 	useEffect(() => {
@@ -162,6 +165,9 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 		try {
 			for (const [key, fn] of Object.entries(functions)) {
+				const source = fn.toString();
+				if (sentFunctionsRef.current[key] === source) continue;
+				sentFunctionsRef.current[key] = source;
 				proxyRef.current.runOnContext(key, fn, key.includes('each'));
 			}
 		} catch (error) {
@@ -190,13 +196,10 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				if (!width || !height) return;
 				const pixelWidth = Math.max(1, Math.round(width * window.devicePixelRatio));
 				const pixelHeight = Math.max(1, Math.round(height * window.devicePixelRatio));
-				if (canvas.width === pixelWidth && canvas.height === pixelHeight) return;
-				canvas.width = pixelWidth;
-				canvas.height = pixelHeight;
-				void (async () => {
-					await proxy.updateUniformAsync('u_resolution', [pixelWidth, pixelHeight]);
-					await proxy.resizeAsync(pixelWidth, pixelHeight);
-				})().catch(setError);
+				if (sizeRef.current[0] === pixelWidth && sizeRef.current[1] === pixelHeight) return;
+				sizeRef.current = [pixelWidth, pixelHeight];
+				proxy.updateUniform('u_resolution', [pixelWidth, pixelHeight]);
+				proxy.resizeAsync(pixelWidth, pixelHeight).catch(setError);
 			});
 
 			observer.observe(canvas);
@@ -212,4 +215,11 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	}, [canvas, disableResizeObserver, state.isReady]);
 
 	return state;
+}
+
+export function uniformValuesEqual(a: number | number[] | undefined, b: number | number[] | undefined): boolean {
+	if (a === b) return true;
+	if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+	return true;
 }

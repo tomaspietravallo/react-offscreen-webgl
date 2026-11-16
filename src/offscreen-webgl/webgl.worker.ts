@@ -9,18 +9,18 @@ export enum WorkerMessageType {
 	CALL_METHOD = 'CALL_METHOD',
 	RESPONSE = 'RESPONSE',
 	EVAL_FN = 'EVAL_FN',
-	FRAME = 'FRAME',
-	FRAME_ACK = 'FRAME_ACK',
+	RELEASE = 'RELEASE',
+	BATCH = 'BATCH',
 }
 
 export type WorkerMessages =
-	| { proxyId: string; type: WorkerMessageType.INIT; width: number; height: number }
-	| { proxyId: string; type: WorkerMessageType.FRAME_ACK }
-	| { proxyId: string; type: WorkerMessageType.FRAME; bitmap: ImageBitmap }
+	| { proxyId: string; type: WorkerMessageType.INIT; canvasId: string; output?: OffscreenCanvas; width: number; height: number }
+	| { type: WorkerMessageType.RELEASE; canvasId: string }
 	| { type: WorkerMessageType.ERROR; id?: string; error: string }
-	| { type: WorkerMessageType.CALL_METHOD; proxyId: string; id: string; method: keyof WebGLManager; args: any[]; async?: boolean }
+	| { type: WorkerMessageType.CALL_METHOD; proxyId: string; id?: string; method: keyof WebGLManager; args: any[]; async?: boolean }
 	| { type: WorkerMessageType.RESPONSE; id: string; result?: any; error?: string }
-	| { type: WorkerMessageType.EVAL_FN; proxyId: string; key: string; id: string; fn: string; onEachFrame?: boolean; async?: boolean };
+	| { type: WorkerMessageType.EVAL_FN; proxyId: string; key: string; id?: string; fn: string; onEachFrame?: boolean; async?: boolean }
+	| { type: WorkerMessageType.BATCH; messages: WorkerMessages[] };
 
 type Request = Extract<
 	WorkerMessages,
@@ -30,18 +30,18 @@ const managers = new Map<string, WebGLManager>();
 const failures = new Map<string, Error>();
 const queues = new Map<string, Promise<void>>();
 let sharedCanvas: OffscreenCanvas | undefined;
-const frames = new Map<string, { inFlight: boolean; pending?: ImageBitmap }>();
+const outputs = new Map<string, OffscreenCanvasRenderingContext2D>();
 
-function sendFrame(proxyId: string, bitmap: ImageBitmap): void {
-	const state = frames.get(proxyId);
-	if (!state) return bitmap.close();
-	if (state.inFlight) {
-		state.pending?.close();
-		state.pending = bitmap;
-		return;
+function present(canvasId: string, source: OffscreenCanvas, width: number, height: number): void {
+	const output = outputs.get(canvasId);
+	if (!output) return;
+	const canvas = output.canvas;
+	if (canvas.width !== width || canvas.height !== height) {
+		canvas.width = width;
+		canvas.height = height;
+		output.globalCompositeOperation = 'copy';
 	}
-	state.inFlight = true;
-	postMessage({ type: WorkerMessageType.FRAME, proxyId, bitmap }, { transfer: [bitmap] });
+	output.drawImage(source, 0, source.height - height, width, height, 0, 0, width, height);
 }
 
 async function handle(data: Request): Promise<void> {
@@ -49,10 +49,18 @@ async function handle(data: Request): Promise<void> {
 		if (data.type === WorkerMessageType.INIT) {
 			sharedCanvas ||= new OffscreenCanvas(data.width, data.height);
 			const canvas = sharedCanvas;
-			frames.set(data.proxyId, { inFlight: false });
-			const result = WebGLManager.fromHTMLCanvasElement(canvas as unknown as HTMLCanvasElement, data.width, data.height, () => {
-				sendFrame(data.proxyId, canvas.transferToImageBitmap());
-			});
+			if (data.output) {
+				const output = data.output.getContext('2d');
+				if (!output) throw new Error('2D canvas rendering is not supported');
+				output.globalCompositeOperation = 'copy';
+				outputs.set(data.canvasId, output);
+			}
+			const result = WebGLManager.fromHTMLCanvasElement(
+				canvas as unknown as HTMLCanvasElement,
+				data.width,
+				data.height,
+				(width, height) => present(data.canvasId, canvas, width, height)
+			);
 			if (result.error) throw result.error;
 			managers.set(data.proxyId, result.data);
 			failures.delete(data.proxyId);
@@ -66,11 +74,7 @@ async function handle(data: Request): Promise<void> {
 			const method = manager[data.method];
 			if (typeof method !== 'function') throw new Error(`Method ${data.method} not found`);
 			result = await (method as (...args: any[]) => any).apply(manager, data.args);
-			if (data.method === 'destroy') {
-				managers.delete(data.proxyId);
-				frames.get(data.proxyId)?.pending?.close();
-				frames.delete(data.proxyId);
-			}
+			if (data.method === 'destroy') managers.delete(data.proxyId);
 		} else {
 			const fn = new Function('manager', 'frame', 'timeElapsed', `return (${data.fn})(manager, frame, timeElapsed);`);
 			result = await manager.runOnContext(data.key, fn as any, data.onEachFrame);
@@ -81,33 +85,26 @@ async function handle(data: Request): Promise<void> {
 			// Manager and WebGL objects cannot be cloned across the worker boundary.
 			result = null;
 		}
-		if (data.async) postMessage({ type: WorkerMessageType.RESPONSE, id: data.id, result });
+		if (data.async && data.id) postMessage({ type: WorkerMessageType.RESPONSE, id: data.id, result });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		if (data.type === WorkerMessageType.INIT) {
-			failures.set(data.proxyId, new Error(message));
-			frames.delete(data.proxyId);
-		}
+		if (data.type === WorkerMessageType.INIT) failures.set(data.proxyId, new Error(message));
 		postMessage({ type: WorkerMessageType.ERROR, id: 'id' in data ? data.id : undefined, error: message });
 	}
 }
 
-addEventListener('message', (event: MessageEvent<Request | Extract<WorkerMessages, { type: WorkerMessageType.FRAME_ACK }>>) => {
-	const data = event.data;
-	if (!data?.proxyId) return;
-	if (data.type === WorkerMessageType.FRAME_ACK) {
-		const state = frames.get(data.proxyId);
-		if (state) {
-			state.inFlight = false;
-			const bitmap = state.pending;
-			state.pending = undefined;
-			if (bitmap) sendFrame(data.proxyId, bitmap);
-		}
+function dispatch(data: WorkerMessages): void {
+	if (data?.type === WorkerMessageType.BATCH) return data.messages.forEach(dispatch);
+	if (data?.type === WorkerMessageType.RELEASE) {
+		outputs.delete(data.canvasId);
 		return;
 	}
+	if (!data || !('proxyId' in data)) return;
 	const queue = (queues.get(data.proxyId) || Promise.resolve()).then(() => handle(data));
 	queues.set(data.proxyId, queue);
 	void queue.finally(() => {
 		if (queues.get(data.proxyId) === queue) queues.delete(data.proxyId);
 	});
-});
+}
+
+addEventListener('message', (event: MessageEvent<WorkerMessages>) => dispatch(event.data));

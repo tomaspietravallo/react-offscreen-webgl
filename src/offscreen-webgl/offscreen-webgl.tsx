@@ -1,7 +1,7 @@
-import { type FC, useCallback, useMemo, useRef, useState } from 'react';
+import { type FC, useCallback, useRef, useState } from 'react';
 import { RunOnWorkerContextFn, RunOnWorkerContextFnName, WebGLUniformName } from './gl-manager';
 import { uuidv4 } from '../utils/uuid';
-import { useOffscreenWebGL } from './useOffscreenWebGL';
+import { uniformValuesEqual, useOffscreenWebGL } from './useOffscreenWebGL';
 
 interface OffscreenWebGLProps {
 	vertexShader?: string;
@@ -15,6 +15,16 @@ interface OffscreenWebGLProps {
 	[key: RunOnWorkerContextFnName]: RunOnWorkerContextFn<any>;
 }
 
+function useStableRecord<T>(record: Record<string, T>, isEqual: (a: T | undefined, b: T) => boolean): Record<string, T> {
+	const ref = useRef(record);
+	const previous = ref.current;
+	const keys = Object.keys(record);
+	if (keys.length !== Object.keys(previous).length || keys.some((key) => !(key in previous) || !isEqual(previous[key], record[key]))) {
+		ref.current = record;
+	}
+	return ref.current;
+}
+
 export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props) => {
 	const { vertexShader, vertexShaderURL, fragmentShader, fragmentShaderURL, refreshRate, disableResizeObserver, ...rest } = props;
 
@@ -25,15 +35,14 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props) => {
 		setCanvas(node!);
 	}, []);
 
-	const uniforms = useMemo(
-		() =>
-			Object.fromEntries(Object.entries(rest).filter(([key]) => key.startsWith('u_'))) as Record<WebGLUniformName, number | number[]>,
-		[rest]
+	const uniforms = useStableRecord(
+		Object.fromEntries(Object.entries(rest).filter(([key]) => key.startsWith('u_'))) as Record<WebGLUniformName, number | number[]>,
+		uniformValuesEqual
 	);
 
-	const functions = useMemo(
-		() => Object.fromEntries(Object.entries(rest).filter(([key]) => key.startsWith('f_'))) as Record<string, RunOnWorkerContextFn>,
-		[rest]
+	const functions = useStableRecord(
+		Object.fromEntries(Object.entries(rest).filter(([key]) => key.startsWith('f_'))) as Record<string, RunOnWorkerContextFn>,
+		(a, b) => a?.toString() === b?.toString()
 	);
 
 	const { isLoading, isReady, hasError, error } = useOffscreenWebGL(canvas!, {
@@ -55,7 +64,7 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props) => {
 		<canvas
 			id={CANVAS_ID.current}
 			ref={canvasRef}
-			style={{ width: '100%', height: '100%' }}
+			style={{ display: 'block', width: '100%', height: '100%' }}
 			data-loading={isLoading}
 			data-ready={isReady}
 			data-error={hasError}
