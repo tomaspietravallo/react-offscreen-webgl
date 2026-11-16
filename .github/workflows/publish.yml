@@ -1,11 +1,12 @@
-name: Release and publish
+name: Test and publish
 
 on:
     push:
         branches: [main]
+    pull_request:
 
 concurrency:
-    group: npm-publish-main
+    group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
     queue: max
 
 permissions:
@@ -29,6 +30,7 @@ jobs:
             - run: npm run test:browser
 
     release:
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         needs: test
         runs-on: ubuntu-24.04
         permissions:
