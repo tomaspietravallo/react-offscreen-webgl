@@ -64,7 +64,7 @@ export const OffscreenWebGL: FC<OffscreenWebGLProps> = (props) => {
 		<canvas
 			id={CANVAS_ID.current}
 			ref={canvasRef}
-			style={{ width: '100%', height: '100%' }}
+			style={{ display: 'block', width: '100%', height: '100%' }}
 			data-loading={isLoading}
 			data-ready={isReady}
 			data-error={hasError}

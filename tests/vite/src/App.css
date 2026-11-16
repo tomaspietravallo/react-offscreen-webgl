@@ -34,3 +34,23 @@
 	border-radius: 4px;
 	font-family: 'Courier New', Courier, monospace;
 }
+
+.shader-grid {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: center;
+	gap: 20px;
+	width: 100%;
+}
+
+.shader-container {
+	flex: 0 0 auto;
+	width: 360px;
+	height: 220px;
+	max-width: 100%;
+	padding: 20px;
+	resize: both;
+	overflow: hidden;
+	background-color: #f0f0f0;
+}

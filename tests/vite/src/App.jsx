@@ -4,7 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 
 function OffscreenWebGLContainer(props) {
 	return (
-		<div style={{ padding: '20px', width: '100%', height: '100%', resize: 'both', overflow: 'hidden', backgroundColor: '#f0f0f0' }}>
+		<div className="shader-container">
 			<OffscreenWebGL
 				f_each_paint={(manager, frame, time) => {
 					manager.paintCanvas();
@@ -66,7 +66,7 @@ function SplitShaderURL(props = {}) {
 	}
 
 	return (
-		<div style={{ padding: '20px', width: '100%', height: '100%', resize: 'both', overflow: 'hidden', backgroundColor: '#f0f0f0' }}>
+		<div className="shader-container">
 			<OffscreenWebGL
 				f_each_paint={(manager, frame, time) => {
 					manager.updateUniform('u_time', time / 1000);
@@ -87,13 +87,12 @@ function App() {
 					display: 'flex',
 					flexDirection: 'column',
 					alignItems: 'center',
-					justifyContent: 'center',
-					height: '100vh',
+					justifyContent: 'flex-start',
 					gap: '20px',
 				}}
 			>
 				<h1>Testing / Development environment</h1>
-				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(3, 1fr)', gap: '20px' }}>
+				<div className="shader-grid">
 					<OffscreenWebGLContainer fragmentShaderURL={'default.glsl'} isolate={false} />
 					<OffscreenWebGLContainer fragmentShaderURL={'default-blue-1.glsl'} isolate={true} />
 					<SplitShaderURL url={'moving-circle.glsl'} isolate={true} />
