@@ -9,6 +9,7 @@ export default {
 					{ type: 'ci', release: false },
 					{ type: 'test', release: false },
 					{ type: 'docs', release: false },
+					{ type: 'build', release: false },
 					{ type: 'chore', release: false },
 					{ type: 'hotfix', breaking: true, release: 'major' },
 					{ type: 'hotfix', release: 'patch' },
