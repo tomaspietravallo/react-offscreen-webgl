@@ -41,6 +41,15 @@ npm run bench:types
 
 The benchmark fails when type instantiations exceed a checked-in baseline by more than 20%. Use the lockfile to keep TypeScript and Attest versions consistent.
 
+Install Chromium for the browser tests, then run the unit and browser suites:
+
+```sh
+npx playwright install chromium
+npm test
+```
+
+`npm test` and `npm run test:browser` run the streaming tests both without isolation and with COOP/COEP headers. Run only the isolated cases with `npm run test:browser:isolated`. The tests verify rendered pixels, message coalescing, shared-memory snapshots, fallback, and cleanup.
+
 ## Publishing
 
 Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) and does not require an npm token in GitHub Actions. In the npm package settings, configure a GitHub Actions trusted publisher with:
