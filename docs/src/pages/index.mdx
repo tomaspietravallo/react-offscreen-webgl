@@ -4,6 +4,7 @@ layout: ../layouts/Docs.astro
 
 import ShaderDemo from '../components/ShaderDemo.jsx';
 import ReleaseVersions from '../components/ReleaseVersions.astro';
+import BrowserCompatibility from '../components/BrowserCompatibility.astro';
 import { ArrowUpRight } from 'lucide-react';
 import { siGithub } from 'simple-icons';
 
@@ -59,6 +60,8 @@ npm install react-offscreen-webgl
 ```
 
 The package is alpha software and its API may change. The browser must support Web Workers, OffscreenCanvas, and WebGL.
+
+<BrowserCompatibility />
 
 </section>
 
@@ -187,7 +190,6 @@ Pass nested arrays to `fragmentShader` or `fragmentShaderURL` to configure shade
 - Worker callbacks share WebGL state; restore state you change so other components are unaffected.
 - Media and camera textures are not yet supported.
 - The library requires the browser features listed above. The example needs WebGL enabled to render.
-
 
 </section>
 
