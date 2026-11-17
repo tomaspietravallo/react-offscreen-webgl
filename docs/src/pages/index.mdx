@@ -61,7 +61,6 @@ npm install react-offscreen-webgl
 
 The package is alpha software and its API may change. The browser must support Web Workers, OffscreenCanvas, and WebGL.
 
-
 </section>
 
 <section id="quick-start">
@@ -104,16 +103,17 @@ You can also load a shader with `fragmentShaderURL`. URL paths beginning with `/
 
 <div className="table-wrap">
 
-| Prop                    | Type                   | Default / purpose                                                       |
-| ----------------------- | ---------------------- | ----------------------------------------------------------------------- |
-| `fragmentShader`        | `string \| string[][]` | Built-in UV gradient; inline fragment source or shader groups.          |
-| `fragmentShaderURL`     | `string \| string[][]` | Fetch fragment source from URL(s); takes precedence over inline source. |
-| `vertexShader`          | `string`               | Built-in passthrough vertex shader.                                     |
-| `vertexShaderURL`       | `string`               | Fetch vertex source; takes precedence over inline source.               |
-| `refreshRate`           | `number`               | Render loop frequency in frames per second; default `30`.               |
-| `disableResizeObserver` | `boolean`              | Default `false`; disables automatic canvas resizing.                    |
-| `u_<name>`              | `number \| number[]`   | Float or float vector uniform.                                          |
-| `f_<name>`              | function               | Run a callback in the worker; names containing `each` run every frame.  |
+| Prop                    | Type                   | Default / purpose                                                          |
+| ----------------------- | ---------------------- | -------------------------------------------------------------------------- |
+| `fragmentShader`        | `string \| string[][]` | Built-in UV gradient; inline fragment source or shader groups.             |
+| `fragmentShaderURL`     | `string \| string[][]` | Fetch fragment source from URL(s); takes precedence over inline source.    |
+| `vertexShader`          | `string`               | Built-in passthrough vertex shader.                                        |
+| `vertexShaderURL`       | `string`               | Fetch vertex source; takes precedence over inline source.                  |
+| `refreshRate`           | `number`               | Render loop frequency in frames per second; default `30`.                  |
+| `disableResizeObserver` | `boolean`              | Default `false`; disables automatic canvas resizing.                       |
+| `uniformStream`         | `UniformStream`        | Numeric uniforms updated outside React; uses shared memory when available. |
+| `u_<name>`              | `number \| number[]`   | Float or float vector uniform.                                             |
+| `f_<name>`              | function               | Run a callback in the worker; names containing `each` run every frame.     |
 
 </div>
 </section>
@@ -144,6 +144,59 @@ const colorShader = `
 ```
 
 Inference supports `float`, `vec2`, `vec3`, and `vec4`, optional precision qualifiers, comma-separated declarations and comments. It combines the vertex shader and all literal fragment groups. Uniforms must start with `u_`. Source that is dynamic, fetched from a URL, exceeding the bounded parser budget (up to about 4,096 characters or 128 comment/declaration scan steps), contains a preprocessor directive or uses unsupported declarations (such as arrays, matrices, samplers or structs) falls back to broad `u_*` props; these cases do not get source-based type checking. Only float and float-vector values are supported by the renderer. Shader compilation and linking are still checked at runtime.
+
+### Streaming mouse and scroll input
+
+Create a stable stream for values that change frequently. Its initial values define the uniform names and scalar/vector shapes; `set` changes one value and `update` changes several together. These calls do not need a React render.
+
+```tsx
+import { useState } from 'react';
+import { createUniformStream, OffscreenWebGL } from 'react-offscreen-webgl';
+
+const mouseShader = `
+  precision highp float;
+  uniform vec2 u_resolution;
+  uniform vec2 u_mouse;
+  uniform float u_scroll;
+  void main() {
+    vec2 mouse = u_mouse / u_resolution;
+    gl_FragColor = vec4(mouse, u_scroll, 1.0);
+  }
+`;
+
+export function MouseShader() {
+	const [stream] = useState(() => createUniformStream({ u_mouse: [0, 0], u_scroll: 0 }));
+	return (
+		<div
+			style={{ width: 400, height: 400 }}
+			onPointerMove={(event) => {
+				const bounds = event.currentTarget.getBoundingClientRect();
+				stream.set('u_mouse', [
+					(event.clientX - bounds.left) * devicePixelRatio,
+					(bounds.bottom - event.clientY) * devicePixelRatio,
+				]);
+			}}
+		>
+			<OffscreenWebGL fragmentShader={mouseShader} uniformStream={stream} refreshRate={60} />
+		</div>
+	);
+}
+```
+
+Use `stream.set('u_scroll', progress)` for normalized scroll progress, or `stream.update({ u_mouse: [x, y], u_scroll: progress })` to publish a complete update. Updates with unchanged values are ignored. Stream values accept numbers and vectors of one to four numbers, as arrays or typed arrays such as `Float32Array`. Names and vector lengths are typed from the initial values, so `set` and `update` reject unknown names and wrong shapes at compile time, and throw at runtime. The managed `u_resolution` uniform cannot be streamed. Use a new stream to change the layout. Stream layouts are not checked against the shader source.
+
+When `crossOriginIsolated` is `true` and `SharedArrayBuffer` is available, the component sends the buffer to the worker once when attaching the stream; changing `refreshRate` does not reattach it. Subsequent updates write shared memory without `postMessage`. The worker only uploads uniforms whose values changed. The worker samples complete snapshots on its frame loop and repaints changed streams at `refreshRate`, even without a worker callback. Intermediate updates can be skipped; streams represent the latest state, not an event queue. Atomic versioning prevents partially written vectors or multi-uniform updates from being applied. Existing worker callbacks see the sampled values before running, and can still call `paintCanvas()`.
+
+Shared memory requires a secure context and cross-origin isolation. Configure your server to return these HTTP response headers for the page and worker resources:
+
+```http
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Cross-origin resources must also satisfy the embedder policy, and the `cross-origin-isolated` permissions policy must allow isolation. See the [HTML Standard's cross-origin isolation requirements](https://html.spec.whatwg.org/multipage/webappapis.html#cross-origin-isolated-capability). The library does not set these headers. Without isolation, if the browser cannot allocate or clone the buffer, or if the worker does not acknowledge it within one second, updates automatically use batched worker messages. Other worker errors put the component in its error state. The fallback coalesces pending values into one update and repaint per scheduled frame at `refreshRate`; it stops scheduling when there are no pending changes. Unmounting or replacing the stream cancels pending updates.
+
+A stream can drive multiple canvases. Replacing or removing `uniformStream` disconnects the previous stream; removing it leaves the last applied values on the canvas. Unmounting disconnects the component. Keep each uniform in either a stream, props, or worker callbacks to avoid competing writes. This transport handles numeric uniforms; camera frames and media textures need a separate API.
 
 </section>
 
