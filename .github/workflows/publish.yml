@@ -3,39 +3,61 @@ name: Test and publish
 on:
     push:
         branches: [main]
+        paths-ignore: ['docs/**', '**.md', '**.mdx']
     pull_request:
+        branches: [main]
 
 concurrency:
-    group: ${{ github.event_name == 'push' && 'npm-publish-main' || format('package-tests-pr-{0}-{1}', github.event.pull_request.number, github.sha) }}
+    group: ${{ github.event_name == 'push' && 'npm-publish-main' || format('package-pr-{0}', github.event.pull_request.number) }}
     queue: max
 
 permissions:
     contents: read
+    pull-requests: read
 
 jobs:
     test:
         name: Package tests
         runs-on: ubuntu-24.04
         steps:
+            - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+              if: github.event_name == 'pull_request'
+              id: filter
+              with:
+                  predicate-quantifier: some-with-excludes
+                  filters: |
+                      package:
+                        - '**'
+                        - '!docs/**'
+                        - '!**/*.md'
+                        - '!**/*.mdx'
             - uses: actions/checkout@v6
+              if: github.event_name == 'push' || steps.filter.outputs.package == 'true'
             - uses: actions/setup-node@v6
+              if: github.event_name == 'push' || steps.filter.outputs.package == 'true'
               with:
                   node-version: '26.13.0'
-                  cache: 'npm'
+                  cache: npm
             - run: npm ci
+              if: github.event_name == 'push' || steps.filter.outputs.package == 'true'
             - name: Get Playwright version
+              if: github.event_name == 'push' || steps.filter.outputs.package == 'true'
               id: playwright-version
               run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
             - uses: actions/cache@v4
+              if: github.event_name == 'push' || steps.filter.outputs.package == 'true'
               with:
                   path: ~/.cache/ms-playwright
                   key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium
-            - run: npx playwright install --with-deps chromium
-            - run: npm run test:types
-            - run: npm run test:attest
-            - run: npm run bench:types
-            - run: npm run test:unit
-            - run: npm run test:browser
+            - name: Test package
+              if: github.event_name == 'push' || steps.filter.outputs.package == 'true'
+              run: |
+                  npx playwright install --with-deps chromium
+                  npm run test:types
+                  npm run test:attest
+                  npm run bench:types
+                  npm run test:unit
+                  npm run test:browser
 
     release:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
