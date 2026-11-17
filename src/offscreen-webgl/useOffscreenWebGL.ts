@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { WebGLManager, WebGLUniformName, RunOnWorkerContextFn } from './gl-manager';
 import { WebGLManagerProxy, WebGLManagerProxyType } from './proxy';
 import { DEFAULT_FS_SHADER, DEFAULT_VS_SHADER } from '../defaults';
+import type { UniformStream } from './uniform-stream';
+import { FrameTask, scheduleFrames } from './frame-scheduler';
 
 interface UseOffscreenWebGLOptions {
 	vertexShader?: string;
@@ -11,6 +13,7 @@ interface UseOffscreenWebGLOptions {
 	refreshRate?: number;
 	disableResizeObserver?: boolean;
 	uniforms?: Record<WebGLUniformName, number | number[]>;
+	uniformStream?: UniformStream;
 	functions?: Record<string, RunOnWorkerContextFn>;
 }
 
@@ -29,6 +32,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		refreshRate = WebGLManager.DEFAULT_FRAME_RATE,
 		disableResizeObserver = false,
 		uniforms = {},
+		uniformStream,
 		functions = {},
 	} = options;
 
@@ -146,6 +150,37 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 			}
 		};
 	}, [canvas]);
+
+	useEffect(() => {
+		const proxy = proxyRef.current;
+		if (!state.isReady || !proxy || !uniformStream) return;
+		let active = true;
+		let unsubscribe: (() => void) | undefined;
+		let frameTask: FrameTask | null = null;
+		let latestValues: Record<WebGLUniformName, number | number[]> = {};
+		const useMessages = () => {
+			if (!active) return;
+			unsubscribe = uniformStream.subscribe((values) => {
+				latestValues = values;
+				frameTask ??= scheduleFrames(1000 / refreshRate, () => {
+					frameTask?.cancel();
+					frameTask = null;
+					if (!active) return;
+					proxy.updateUniforms(latestValues);
+					proxy.paintCanvas();
+				});
+			});
+		};
+		if (uniformStream.sharedMemory) {
+			proxy.setUniformStreamAsync(uniformStream.sharedMemory).catch(useMessages);
+		} else useMessages();
+		return () => {
+			active = false;
+			unsubscribe?.();
+			frameTask?.cancel();
+			if (uniformStream.sharedMemory && proxyRef.current === proxy) proxy.setUniformStream(null);
+		};
+	}, [uniformStream, state.isReady, canvas, refreshRate]);
 
 	useEffect(() => {
 		if (!state.isReady || !proxyRef.current) return;

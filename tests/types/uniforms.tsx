@@ -1,4 +1,4 @@
-import { OffscreenWebGL, type UniformsOfSource } from '../../src';
+import { createUniformStream, OffscreenWebGL, type UniformStream, type UniformsOfSource } from '../../src';
 
 const fragment = `
 precision highp float;
@@ -10,6 +10,11 @@ void main() { gl_FragColor = vec4(u_color, u_opacity); }
 const vertex = `uniform vec2 u_offset; void main() { gl_Position = vec4(u_offset, 0., 1.); }`;
 const values = { u_color: [1, 0.4, 0.2], u_opacity: 0.8 } satisfies UniformsOfSource<typeof fragment>;
 const ok = <OffscreenWebGL fragmentShader={fragment} vertexShader={vertex} {...values} u_offset={[1, 2]} />;
+const stream: UniformStream = createUniformStream(values);
+stream.set('u_color', [0, 1, 0] as const);
+stream.update({ u_opacity: 0.5 });
+const streamed = <OffscreenWebGL fragmentShader={fragment} uniformStream={stream} />;
+void streamed;
 const inline = <OffscreenWebGL fragmentShader={`uniform vec3 u_color;`} u_color={[1, 2, 3]} />;
 // @ts-expect-error wrong vector length
 const wrongLength = <OffscreenWebGL fragmentShader={fragment} u_color={[1, 2]} />;

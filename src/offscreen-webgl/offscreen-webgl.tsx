@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ShaderUniformProps } from './uniform-types';
+import type { UniformStream } from './uniform-stream';
 import { RunOnWorkerContextFn, RunOnWorkerContextFnName, WebGLUniformName } from './gl-manager';
 import { uuidv4 } from '../utils/uuid';
 import { uniformValuesEqual, useOffscreenWebGL } from './useOffscreenWebGL';
@@ -11,6 +12,7 @@ interface OffscreenWebGLProps<V, F, VURL, FURL> {
 	fragmentShaderURL?: FURL;
 	refreshRate?: number;
 	disableResizeObserver?: boolean;
+	uniformStream?: UniformStream;
 
 	[key: RunOnWorkerContextFnName]: RunOnWorkerContextFn<any>;
 }
@@ -31,7 +33,8 @@ export function OffscreenWebGL<
 	const VURL extends string | undefined = undefined,
 	const FURL extends string | string[][] | undefined = undefined,
 >(props: OffscreenWebGLProps<V, F, VURL, FURL> & ShaderUniformProps<NoInfer<V>, NoInfer<F>, NoInfer<VURL>, NoInfer<FURL>>) {
-	const { vertexShader, vertexShaderURL, fragmentShader, fragmentShaderURL, refreshRate, disableResizeObserver, ...rest } = props;
+	const { vertexShader, vertexShaderURL, fragmentShader, fragmentShaderURL, refreshRate, disableResizeObserver, uniformStream, ...rest } =
+		props;
 
 	const CANVAS_ID = useRef(`OffscreenWebGLCanvas-${uuidv4()}`);
 	const [canvas, setCanvas] = useState<HTMLCanvasElement>();
@@ -62,6 +65,7 @@ export function OffscreenWebGL<
 		refreshRate,
 		disableResizeObserver,
 		uniforms,
+		uniformStream,
 		functions,
 	});
 
