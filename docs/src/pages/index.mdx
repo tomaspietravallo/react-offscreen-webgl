@@ -61,7 +61,6 @@ npm install react-offscreen-webgl
 
 The package is alpha software and its API may change. The browser must support Web Workers, OffscreenCanvas, and WebGL.
 
-<BrowserCompatibility />
 
 </section>
 
@@ -189,7 +188,9 @@ Pass nested arrays to `fragmentShader` or `fragmentShaderURL` to configure shade
 - The component is browser-only. In an SSR framework, load it on the client (for example, a dynamic import with SSR disabled).
 - Worker callbacks share WebGL state; restore state you change so other components are unaffected.
 - Media and camera textures are not yet supported.
-- The library requires the browser features listed above. The example needs WebGL enabled to render.
+- The library requires the browser features listed below. The example needs WebGL enabled to render.
+
+<BrowserCompatibility />
 
 </section>
 

@@ -14,7 +14,7 @@ The configured base path is `/react-offscreen-webgl/`, including in local previe
 
 ## Browser compatibility guidance
 
-The table is generated during the Astro build from the Browserslist query in `.browserslistrc` and the lockfile-pinned Can I Use dataset. Update the query and the feature links together when renderer requirements change. It represents only the selected broad features, not every required API or a supported-browser policy. Android Chrome and Firefox data contain only the latest versions, so the table does not infer their minimums.
+The table is generated during the Astro build from the Browserslist query in `.browserslistrc` and the lockfile-pinned Can I Use dataset. Update the query and the feature links together when renderer requirements change. It represents only the selected broad features, not every required API or a supported-browser policy.
 
 Run `npm run compat:check` from `docs` to report API compatibility warnings for the library source against that same query. This uses `eslint-plugin-compat` and is advisory: warnings do not block the docs build, and the scanner cannot detect every API or combination of APIs. The docs workflow prints the warnings when source or docs changes.
 
