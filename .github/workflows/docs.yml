@@ -3,7 +3,7 @@ name: Deploy documentation
 on:
     push:
         branches: [main]
-        paths: ['docs/**']
+        paths: ['docs/**', 'src/**', 'index.ts', 'vite.config.ts', '.github/workflows/docs.yml']
     pull_request:
         branches: [main]
     workflow_dispatch:
@@ -28,6 +28,9 @@ jobs:
                   filters: |
                       docs:
                         - 'docs/**'
+                        - 'src/**'
+                        - 'index.ts'
+                        - 'vite.config.ts'
                         - '.github/workflows/docs.yml'
             - uses: actions/checkout@v4
               if: github.event_name != 'pull_request' || steps.filter.outputs.docs == 'true'
@@ -42,6 +45,7 @@ jobs:
               working-directory: docs
               run: |
                   npm ci
+                  npm run compat:check
                   npm run build
                   node scripts/smoke-test.mjs
             - uses: actions/upload-pages-artifact@v3
