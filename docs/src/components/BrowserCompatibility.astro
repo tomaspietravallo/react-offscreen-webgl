@@ -1,0 +1,23 @@
+---
+import { buildCompatibility, features } from '../compat/browser-compat.mjs';
+
+const rows = buildCompatibility();
+---
+
+<h3 id="browser-compatibility">Browser compatibility guidance</h3>
+<p>
+  These versions are based on Can I Use data for the selected browser features below. They are guidance,
+  not a guarantee or a list of tested browsers. Other APIs, browser settings, operating systems, graphics
+  hardware and drivers can affect rendering. Test the library in your target environments.
+</p>
+<div class="table-wrap">
+  <table class="compatibility-table" aria-label="Suggested minimum browser versions">
+    <thead><tr>{rows.map((row) => <th scope="col">{row.name}</th>)}</tr></thead>
+    <tbody><tr>{rows.map((row) => <td>{row.version || 'Unknown'}</td>)}</tr></tbody>
+  </table>
+</div>
+<details>
+  <summary>Selected browser features</summary>
+  <ul>{features.map(([name, url]) => <li><a href={url}>{name}</a></li>)}</ul>
+  <p>Generated at release time with <a href="https://github.com/browserslist/browserslist">Browserslist</a> and its pinned Can I Use dataset. Broad feature categories do not capture every worker and WebGL interaction or JavaScript API used by the package.</p>
+</details>
