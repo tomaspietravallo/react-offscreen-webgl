@@ -39,12 +39,12 @@ jobs:
               with:
                   node-version: 22
                   cache: npm
-                  cache-dependency-path: docs/package-lock.json
+                  cache-dependency-path: docs/package.json
             - name: Build and smoke-test docs
               if: github.event_name != 'pull_request' || steps.filter.outputs.docs == 'true'
               working-directory: docs
               run: |
-                  npm ci
+                  npm install --no-package-lock
                   npm run compat:check
                   npm run build
                   node scripts/smoke-test.mjs

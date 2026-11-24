@@ -4,7 +4,7 @@ The site uses Astro, MDX, and a client-only React example that imports the libra
 
 ```sh
 cd docs
-npm ci
+npm install --no-package-lock
 npm run dev
 npm run build
 npm run preview
@@ -14,7 +14,7 @@ The configured base path is `/react-offscreen-webgl/`, including in local previe
 
 ## Browser compatibility guidance
 
-The table is generated during the Astro build from the Browserslist query in `.browserslistrc` and the lockfile-pinned Can I Use dataset. Update the query and the feature links together when renderer requirements change. It represents only the selected broad features, not every required API or a supported-browser policy.
+The table is generated during the Astro build from the Browserslist query in `.browserslistrc` and the installed Can I Use dataset. Update the query and the feature links together when renderer requirements change. It represents only the selected broad features, not every required API or a supported-browser policy.
 
 Run `npm run compat:check` from `docs` to report API compatibility warnings for the library source against that same query. This uses `eslint-plugin-compat` and is advisory: warnings do not block the docs build, and the scanner cannot detect every API or combination of APIs. The docs workflow prints the warnings when source or docs changes.
 
