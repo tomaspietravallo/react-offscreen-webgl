@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { WebGLManager, WebGLUniformName, RunOnWorkerContextFn } from './gl-manager';
 import { WebGLManagerProxy, WebGLManagerProxyType } from './proxy';
 import { DEFAULT_FS_SHADER, DEFAULT_VS_SHADER } from '../defaults';
+import type { UniformStream } from './uniform-stream';
+import { FrameTask, scheduleFrames } from './frame-scheduler';
+
+const STREAM_ATTACH_TIMEOUT_MS = 1000;
 
 interface UseOffscreenWebGLOptions {
 	vertexShader?: string;
@@ -11,6 +15,7 @@ interface UseOffscreenWebGLOptions {
 	refreshRate?: number;
 	disableResizeObserver?: boolean;
 	uniforms?: Record<WebGLUniformName, number | number[]>;
+	uniformStream?: UniformStream;
 	functions?: Record<string, RunOnWorkerContextFn>;
 }
 
@@ -29,8 +34,16 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		refreshRate = WebGLManager.DEFAULT_FRAME_RATE,
 		disableResizeObserver = false,
 		uniforms = {},
+		uniformStream,
 		functions = {},
 	} = options;
+
+	useState(() => {
+		if (typeof Worker === 'undefined') return;
+		try {
+			WebGLManagerProxy.prewarm();
+		} catch {}
+	});
 
 	const [state, setState] = useState<UseOffscreenWebGLState>({
 		isLoading: false,
@@ -45,6 +58,9 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	const sizeRef = useRef<[number, number]>([0, 0]);
 	const sentUniformsRef = useRef<Record<WebGLUniformName, number | number[]>>({});
 	const sentFunctionsRef = useRef<Record<string, string>>({});
+	const sentRefreshRateRef = useRef<number | null>(null);
+	const refreshRateRef = useRef(refreshRate);
+	refreshRateRef.current = refreshRate;
 
 	const setError = useCallback((error: Error) => {
 		setState((prev) => ({
@@ -79,51 +95,37 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 				proxyRef.current = proxy;
 
-				if (options.vertexShaderURL) {
-					await proxy.setRemoteVertexShaderAsync(new URL(options.vertexShaderURL, window.location.origin).toString());
-					if (cancelled) return;
-				} else {
-					await proxy.setVertexShaderAsync(vertexShader);
-					if (cancelled) return;
-				}
+				const steps: Promise<unknown>[] = [
+					options.vertexShaderURL
+						? proxy.setRemoteVertexShaderAsync(new URL(options.vertexShaderURL, window.location.origin).toString())
+						: proxy.setVertexShaderAsync(vertexShader),
+				];
 
 				if (options.fragmentShaderURL) {
-					if (Array.isArray(options.fragmentShaderURL)) {
-						await proxy.setRemoteFragmentShaderGroupsAsync(options.fragmentShaderURL);
-						if (cancelled) return;
-					} else {
-						await proxy.setRemoteFragmentShadersAsync(new URL(options.fragmentShaderURL, window.location.origin).toString());
-						if (cancelled) return;
-					}
+					steps.push(
+						Array.isArray(options.fragmentShaderURL)
+							? proxy.setRemoteFragmentShaderGroupsAsync(options.fragmentShaderURL)
+							: proxy.setRemoteFragmentShadersAsync(new URL(options.fragmentShaderURL, window.location.origin).toString())
+					);
 				} else {
-					if (Array.isArray(fragmentShader)) {
-						await proxy.setFragmentShaderGroupsAsync(fragmentShader);
-						if (cancelled) return;
-					} else {
-						await proxy.setFragmentShadersAsync([fragmentShader]);
-						if (cancelled) return;
-					}
+					steps.push(
+						Array.isArray(fragmentShader)
+							? proxy.setFragmentShaderGroupsAsync(fragmentShader)
+							: proxy.setFragmentShadersAsync([fragmentShader])
+					);
 				}
 
-				await proxy.setupWholeScreenQuadAsync();
-				if (cancelled) return;
-
-				await proxy.updateUniformsAsync(uniforms);
-				if (cancelled) return;
+				steps.push(proxy.setupWholeScreenQuadAsync(), proxy.updateUniformsAsync(uniforms));
 				sentUniformsRef.current = { ...uniforms };
 
-				for (const [key, fn] of Object.entries(functions)) {
-					await proxy.runOnContextAsync(key, fn, key.includes('each'));
-					if (cancelled) return;
-				}
+				for (const [key, fn] of Object.entries(functions)) steps.push(proxy.runOnContextAsync(key, fn, key.includes('each')));
 				sentFunctionsRef.current = Object.fromEntries(Object.entries(functions).map(([key, fn]) => [key, fn.toString()]));
 
-				await proxy.setFrameRateAsync(refreshRate);
-				if (cancelled) return;
+				steps.push(proxy.setFrameRateAsync(refreshRate));
+				sentRefreshRateRef.current = refreshRate;
 
-				await proxy.updateUniformAsync('u_resolution', size);
-				if (cancelled) return;
-				await proxy.resizeAsync(size[0], size[1]);
+				steps.push(proxy.updateUniformAsync('u_resolution', size), proxy.resizeAsync(size[0], size[1]));
+				await Promise.all(steps);
 				if (cancelled) return;
 				setState((prev) => ({
 					...prev,
@@ -146,6 +148,51 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 			}
 		};
 	}, [canvas]);
+
+	useEffect(() => {
+		const proxy = proxyRef.current;
+		if (!state.isReady || !proxy || !uniformStream) return;
+		let active = true;
+		let unsubscribe: (() => void) | undefined;
+		let frameTask: FrameTask | null = null;
+		let attachTimeout: ReturnType<typeof setTimeout> | undefined;
+		let latestValues: Record<WebGLUniformName, number | number[]> = {};
+		const useMessages = () => {
+			if (!active || unsubscribe) return;
+			unsubscribe = uniformStream.subscribe((values) => {
+				latestValues = values;
+				frameTask ??= scheduleFrames(1000 / refreshRateRef.current, () => {
+					frameTask?.cancel();
+					frameTask = null;
+					if (!active) return;
+					proxy.updateUniforms(latestValues);
+					proxy.paintCanvas();
+				});
+			});
+		};
+		if (uniformStream.sharedMemory) {
+			attachTimeout = setTimeout(() => {
+				if (!active) return;
+				proxy.setUniformStream(null);
+				useMessages();
+			}, STREAM_ATTACH_TIMEOUT_MS);
+			proxy.setUniformStreamAsync(uniformStream.sharedMemory).then(
+				() => clearTimeout(attachTimeout),
+				(error) => {
+					clearTimeout(attachTimeout);
+					if (error instanceof DOMException && error.name === 'DataCloneError') useMessages();
+					else if (active) setError(error as Error);
+				}
+			);
+		} else useMessages();
+		return () => {
+			active = false;
+			clearTimeout(attachTimeout);
+			unsubscribe?.();
+			frameTask?.cancel();
+			if (uniformStream.sharedMemory && proxyRef.current === proxy) proxy.setUniformStream(null);
+		};
+	}, [uniformStream, state.isReady]);
 
 	useEffect(() => {
 		if (!state.isReady || !proxyRef.current) return;
@@ -178,7 +225,9 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	useEffect(() => {
 		if (!state.isReady || !proxyRef.current) return;
 
+		if (sentRefreshRateRef.current === refreshRate) return;
 		try {
+			sentRefreshRateRef.current = refreshRate;
 			proxyRef.current.setFrameRate(refreshRate);
 		} catch (error) {
 			setError(error as Error);

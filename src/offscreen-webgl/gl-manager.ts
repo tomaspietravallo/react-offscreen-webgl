@@ -1,6 +1,7 @@
 import { err, ok, Result } from '../utils/try-catch';
 import { createShaderFromSource, createWholeScreenQuad, setFloatUniforms } from '../utils/webgl';
 import { FrameTask, scheduleFrames } from './frame-scheduler';
+import { createUniformStreamReader, SharedUniformStream } from './uniform-stream';
 
 export type WebGLUniformName = `u_${string}`;
 
@@ -24,6 +25,8 @@ export class WebGLManager {
 	private vertexShader: WebGLShader | null = null;
 	private fragmentShaders: WebGLShader[] | null = null;
 	private frameTask: FrameTask | null = null;
+	private readUniformStream: ReturnType<typeof createUniformStreamReader> | null = null;
+	private streamNeedsPaint = false;
 
 	private framebuffers: [FrameBufferObject, FrameBufferObject] | null = null;
 
@@ -88,6 +91,8 @@ export class WebGLManager {
 	public destroy(): Result<WebGLManager> {
 		this.frameTask?.cancel();
 		this.frameTask = null;
+		this.readUniformStream = null;
+		this.streamNeedsPaint = false;
 		try {
 			if (this.program) {
 				this.gl.deleteProgram(this.program);
@@ -275,6 +280,8 @@ export class WebGLManager {
 	}
 
 	public paintCanvas(): Result<WebGLManager> {
+		this.consumeUniformStream();
+		this.streamNeedsPaint = false;
 		if (this.shaderPrograms && this.fragmentShaderGroups) {
 			if (this.canvas.width < this.width) this.canvas.width = this.width;
 			if (this.canvas.height < this.height) this.canvas.height = this.height;
@@ -443,6 +450,18 @@ export class WebGLManager {
 		return ok(this);
 	}
 
+	public setUniformStream(stream: SharedUniformStream | null): void {
+		this.readUniformStream = stream ? createUniformStreamReader(stream) : null;
+		this.streamNeedsPaint = false;
+	}
+
+	private consumeUniformStream(): void {
+		const values = this.readUniformStream?.();
+		if (!values) return;
+		this.updateUniforms(values);
+		this.streamNeedsPaint = true;
+	}
+
 	public checkWebGLVitals(): Result<WebGLManager> {
 		if (!this.gl) {
 			return err(new Error('[OffscreenCanvas @ GLManager] WebGL context not available'));
@@ -494,11 +513,13 @@ export class WebGLManager {
 			this.startTime ??= now;
 			this.frame++;
 			this.timeElapsed = now - this.startTime;
+			this.consumeUniformStream();
 			let arr = Object.values(this.onEachFrameFunctions);
 
 			for (let i = 0; i < arr.length; i++) {
 				arr[i](this, this.frame, this.timeElapsed);
 			}
+			if (this.streamNeedsPaint) this.paintCanvas();
 		});
 		return ok(this);
 	}

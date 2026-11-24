@@ -1,23 +1,5 @@
 import { WebGLManager } from './gl-manager';
-
-export enum WorkerMessageType {
-	INIT = 'INIT',
-	ERROR = 'ERROR',
-	CALL_METHOD = 'CALL_METHOD',
-	RESPONSE = 'RESPONSE',
-	EVAL_FN = 'EVAL_FN',
-	RELEASE = 'RELEASE',
-	BATCH = 'BATCH',
-}
-
-export type WorkerMessages =
-	| { proxyId: string; type: WorkerMessageType.INIT; canvasId: string; output?: OffscreenCanvas; width: number; height: number }
-	| { type: WorkerMessageType.RELEASE; canvasId: string }
-	| { type: WorkerMessageType.ERROR; id?: string; error: string }
-	| { type: WorkerMessageType.CALL_METHOD; proxyId: string; id?: string; method: keyof WebGLManager; args: any[]; async?: boolean }
-	| { type: WorkerMessageType.RESPONSE; id: string; result?: any; error?: string }
-	| { type: WorkerMessageType.EVAL_FN; proxyId: string; key: string; id?: string; fn: string; onEachFrame?: boolean; async?: boolean }
-	| { type: WorkerMessageType.BATCH; messages: WorkerMessages[] };
+import { WorkerMessageType, type WorkerMessages } from './worker-messages';
 
 type Request = Extract<
 	WorkerMessages,
@@ -26,7 +8,8 @@ type Request = Extract<
 const managers = new Map<string, WebGLManager>();
 const failures = new Map<string, Error>();
 const queues = new Map<string, Promise<void>>();
-let sharedCanvas: OffscreenCanvas | undefined;
+const sharedCanvas = new OffscreenCanvas(1, 1);
+sharedCanvas.getContext('webgl');
 const outputs = new Map<string, OffscreenCanvasRenderingContext2D>();
 
 function present(canvasId: string, source: OffscreenCanvas, width: number, height: number): void {
@@ -44,7 +27,6 @@ function present(canvasId: string, source: OffscreenCanvas, width: number, heigh
 async function handle(data: Request): Promise<void> {
 	try {
 		if (data.type === WorkerMessageType.INIT) {
-			sharedCanvas ||= new OffscreenCanvas(data.width, data.height);
 			const canvas = sharedCanvas;
 			if (data.output) {
 				const output = data.output.getContext('2d');

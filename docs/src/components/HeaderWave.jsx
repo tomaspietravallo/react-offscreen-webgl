@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { OffscreenWebGL } from '../../../src/index';
 
 const shader = `
 precision highp float;
@@ -19,29 +19,17 @@ void main() {
 }`;
 
 export default function HeaderWave() {
-	const [Component, setComponent] = useState(null);
-	useEffect(() => {
-		let active = true;
-		import('../../../src/index').then(({ OffscreenWebGL }) => {
-			if (active) setComponent(() => OffscreenWebGL);
-		});
-		return () => {
-			active = false;
-		};
-	}, []);
 	return (
 		<div className="header-wave" aria-hidden="true">
 			<div className="header-wave-render">
-				{Component && (
-					<Component
-						fragmentShader={shader}
-						refreshRate={20}
-						f_each_animate={(manager, frame, time) => {
-							manager.updateUniform('u_time', time / 5000);
-							manager.paintCanvas();
-						}}
-					/>
-				)}
+				<OffscreenWebGL
+					fragmentShader={shader}
+					refreshRate={20}
+					f_each_animate={(manager, frame, time) => {
+						manager.updateUniform('u_time', time / 5000);
+						manager.paintCanvas();
+					}}
+				/>
 			</div>
 		</div>
 	);

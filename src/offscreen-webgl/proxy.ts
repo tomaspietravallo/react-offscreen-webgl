@@ -1,6 +1,6 @@
 import { uuidv4 } from '../utils/uuid';
 import { RunOnWorkerContextFn, WebGLManager } from './gl-manager';
-import { WorkerMessageType, WorkerMessages } from './webgl.worker';
+import { WorkerMessageType, WorkerMessages } from './worker-messages';
 import WebWorker from '../offscreen-webgl/webgl.worker?worker';
 
 type MappedManagerFunctions = { [K in keyof WebGLManager]: WebGLManager[K] extends (...args: any) => any ? WebGLManager[K] : never };
@@ -34,17 +34,22 @@ class WebGLManagerProxyClass {
 		{} as Record<string, string>
 	);
 
+	public static prewarm(): Worker {
+		if (WebGLManagerProxyClass.worker) return WebGLManagerProxyClass.worker;
+		const worker = new WebWorker();
+		worker.onmessage = WebGLManagerProxyClass.handleMessage;
+		worker.onerror = (event) => {
+			const error = new Error(event.message || 'WebGL worker failed');
+			WebGLManagerProxyClass.workerFailure = error;
+			for (const pending of Object.values(WebGLManagerProxyClass.pendingResponses)) pending.reject(error);
+			WebGLManagerProxyClass.pendingResponses = {};
+		};
+		WebGLManagerProxyClass.worker = worker;
+		return worker;
+	}
+
 	constructor(canvas: HTMLCanvasElement) {
-		if (!WebGLManagerProxyClass.worker) {
-			WebGLManagerProxyClass.worker = new WebWorker();
-			WebGLManagerProxyClass.worker.onmessage = WebGLManagerProxyClass.handleMessage;
-			WebGLManagerProxyClass.worker.onerror = (event) => {
-				const error = new Error(event.message || 'WebGL worker failed');
-				WebGLManagerProxyClass.workerFailure = error;
-				for (const pending of Object.values(WebGLManagerProxyClass.pendingResponses)) pending.reject(error);
-				WebGLManagerProxyClass.pendingResponses = {};
-			};
-		}
+		const worker = WebGLManagerProxyClass.prewarm();
 
 		let canvasId = WebGLManagerProxyClass.canvasIds.get(canvas);
 		let output: OffscreenCanvas | undefined;
@@ -56,7 +61,7 @@ class WebGLManagerProxyClass {
 			WebGLManagerProxyClass.releasedCanvases.register(canvas, canvasId);
 		}
 		WebGLManagerProxyClass.flush();
-		WebGLManagerProxyClass.worker.postMessage(
+		worker.postMessage(
 			{
 				type: WorkerMessageType.INIT,
 				width: canvas.width,
@@ -196,4 +201,5 @@ class WebGLManagerProxyClass {
 
 export const WebGLManagerProxy = WebGLManagerProxyClass as unknown as {
 	new (worker: HTMLCanvasElement): WebGLManagerProxyType;
+	prewarm(): Worker;
 };

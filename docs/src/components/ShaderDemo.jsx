@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { OffscreenWebGL } from '../../../src/index';
 
 const shader = `
 precision highp float;
@@ -27,31 +28,19 @@ export default function ShaderDemo() {
 	const [aberration, setAberration] = useState(0.05);
 	const [height, setHeight] = useState(0.55);
 	const [frequency, setFrequency] = useState(1.2);
-	const [Component, setComponent] = useState(null);
-	useEffect(() => {
-		let active = true;
-		import('../../../src/index').then(({ OffscreenWebGL }) => {
-			if (active) setComponent(() => OffscreenWebGL);
-		});
-		return () => {
-			active = false;
-		};
-	}, []);
 	return (
 		<div className="demo">
 			<div className="demo-canvas" aria-label="Animated rainbow wave rendered with WebGL">
-				{Component && (
-					<Component
-						fragmentShader={shader}
-						u_xScale={frequency}
-						u_yScale={height}
-						u_aberration={aberration}
-						f_each_animate={(manager, frame, time) => {
-							manager.updateUniform('u_time', time / 5000);
-							manager.paintCanvas();
-						}}
-					/>
-				)}
+				<OffscreenWebGL
+					fragmentShader={shader}
+					u_xScale={frequency}
+					u_yScale={height}
+					u_aberration={aberration}
+					f_each_animate={(manager, frame, time) => {
+						manager.updateUniform('u_time', time / 5000);
+						manager.paintCanvas();
+					}}
+				/>
 			</div>
 			<div className="demo-controls">
 				<div className="sliders">
