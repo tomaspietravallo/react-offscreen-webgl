@@ -1,0 +1,34 @@
+name: Package consumer matrix
+
+on:
+    workflow_call:
+
+permissions:
+    contents: read
+
+jobs:
+    consumer:
+        name: Package consumer (${{ matrix.case }})
+        runs-on: ubuntu-24.04
+        strategy:
+            fail-fast: false
+            matrix:
+                case: [client-esm, client-cjs, ssr-esm, ssr-cjs]
+        steps:
+            - uses: actions/checkout@v6
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: '26.13.0'
+                  cache: npm
+                  cache-dependency-path: package.json
+            - run: npm install --no-package-lock
+            - name: Get Playwright version
+              id: playwright-version
+              run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium
+            - run: npx playwright install --with-deps chromium
+            - name: Test packed package
+              run: npm run test:package -- ${{ matrix.case }}

@@ -1,7 +1,7 @@
 import { uuidv4 } from '../utils/uuid';
 import { RunOnWorkerContextFn, WebGLManager } from './gl-manager';
 import { WorkerMessageType, WorkerMessages } from './worker-messages';
-import WebWorker from '../offscreen-webgl/webgl.worker?worker';
+import WebWorker from './webgl.worker?worker&inline';
 
 type MappedManagerFunctions = { [K in keyof WebGLManager]: WebGLManager[K] extends (...args: any) => any ? WebGLManager[K] : never };
 type MappedManagerFunctionsAsync = {

@@ -4,7 +4,6 @@ import '@fontsource-variable/geist-mono';
 import '../styles/site.css';
 import HeaderWave from '../components/HeaderWave.jsx';
 import { siGithub } from 'simple-icons';
-import workerUrl from '../../../src/offscreen-webgl/webgl.worker?worker&url';
 const base = import.meta.env.BASE_URL;
 ---
 <!doctype html>
@@ -15,7 +14,6 @@ const base = import.meta.env.BASE_URL;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Documentation for rendering WebGL shaders in React with an offscreen worker." />
     <title>react-offscreen-webgl — Documentation</title>
-    <link rel="prefetch" href={workerUrl} />
   </head>
   <body>
     <header class="topbar">
