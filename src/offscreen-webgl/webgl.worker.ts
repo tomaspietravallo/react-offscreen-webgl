@@ -1,7 +1,4 @@
-import { uuidv4 } from '../utils/uuid';
 import { WebGLManager } from './gl-manager';
-
-export const WORKER_ID = `OffscreenWebGLWorker-${uuidv4()}`;
 
 export enum WorkerMessageType {
 	INIT = 'INIT',
