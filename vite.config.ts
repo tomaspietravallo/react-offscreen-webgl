@@ -9,6 +9,9 @@ export default defineConfig({
 			fileName: (format) => `index.${format}.js`,
 			formats: ['cjs', 'es'],
 		},
+		rollupOptions: {
+			external: (id) => /^react(-dom)?(\/|$)/.test(id),
+		},
 		sourcemap: true,
 		emptyOutDir: true,
 	},
