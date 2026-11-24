@@ -38,6 +38,13 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		functions = {},
 	} = options;
 
+	useState(() => {
+		if (typeof Worker === 'undefined') return;
+		try {
+			WebGLManagerProxy.prewarm();
+		} catch {}
+	});
+
 	const [state, setState] = useState<UseOffscreenWebGLState>({
 		isLoading: false,
 		isReady: false,
@@ -51,6 +58,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	const sizeRef = useRef<[number, number]>([0, 0]);
 	const sentUniformsRef = useRef<Record<WebGLUniformName, number | number[]>>({});
 	const sentFunctionsRef = useRef<Record<string, string>>({});
+	const sentRefreshRateRef = useRef<number | null>(null);
 	const refreshRateRef = useRef(refreshRate);
 	refreshRateRef.current = refreshRate;
 
@@ -87,51 +95,37 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 				proxyRef.current = proxy;
 
-				if (options.vertexShaderURL) {
-					await proxy.setRemoteVertexShaderAsync(new URL(options.vertexShaderURL, window.location.origin).toString());
-					if (cancelled) return;
-				} else {
-					await proxy.setVertexShaderAsync(vertexShader);
-					if (cancelled) return;
-				}
+				const steps: Promise<unknown>[] = [
+					options.vertexShaderURL
+						? proxy.setRemoteVertexShaderAsync(new URL(options.vertexShaderURL, window.location.origin).toString())
+						: proxy.setVertexShaderAsync(vertexShader),
+				];
 
 				if (options.fragmentShaderURL) {
-					if (Array.isArray(options.fragmentShaderURL)) {
-						await proxy.setRemoteFragmentShaderGroupsAsync(options.fragmentShaderURL);
-						if (cancelled) return;
-					} else {
-						await proxy.setRemoteFragmentShadersAsync(new URL(options.fragmentShaderURL, window.location.origin).toString());
-						if (cancelled) return;
-					}
+					steps.push(
+						Array.isArray(options.fragmentShaderURL)
+							? proxy.setRemoteFragmentShaderGroupsAsync(options.fragmentShaderURL)
+							: proxy.setRemoteFragmentShadersAsync(new URL(options.fragmentShaderURL, window.location.origin).toString())
+					);
 				} else {
-					if (Array.isArray(fragmentShader)) {
-						await proxy.setFragmentShaderGroupsAsync(fragmentShader);
-						if (cancelled) return;
-					} else {
-						await proxy.setFragmentShadersAsync([fragmentShader]);
-						if (cancelled) return;
-					}
+					steps.push(
+						Array.isArray(fragmentShader)
+							? proxy.setFragmentShaderGroupsAsync(fragmentShader)
+							: proxy.setFragmentShadersAsync([fragmentShader])
+					);
 				}
 
-				await proxy.setupWholeScreenQuadAsync();
-				if (cancelled) return;
-
-				await proxy.updateUniformsAsync(uniforms);
-				if (cancelled) return;
+				steps.push(proxy.setupWholeScreenQuadAsync(), proxy.updateUniformsAsync(uniforms));
 				sentUniformsRef.current = { ...uniforms };
 
-				for (const [key, fn] of Object.entries(functions)) {
-					await proxy.runOnContextAsync(key, fn, key.includes('each'));
-					if (cancelled) return;
-				}
+				for (const [key, fn] of Object.entries(functions)) steps.push(proxy.runOnContextAsync(key, fn, key.includes('each')));
 				sentFunctionsRef.current = Object.fromEntries(Object.entries(functions).map(([key, fn]) => [key, fn.toString()]));
 
-				await proxy.setFrameRateAsync(refreshRate);
-				if (cancelled) return;
+				steps.push(proxy.setFrameRateAsync(refreshRate));
+				sentRefreshRateRef.current = refreshRate;
 
-				await proxy.updateUniformAsync('u_resolution', size);
-				if (cancelled) return;
-				await proxy.resizeAsync(size[0], size[1]);
+				steps.push(proxy.updateUniformAsync('u_resolution', size), proxy.resizeAsync(size[0], size[1]));
+				await Promise.all(steps);
 				if (cancelled) return;
 				setState((prev) => ({
 					...prev,
@@ -231,7 +225,9 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	useEffect(() => {
 		if (!state.isReady || !proxyRef.current) return;
 
+		if (sentRefreshRateRef.current === refreshRate) return;
 		try {
+			sentRefreshRateRef.current = refreshRate;
 			proxyRef.current.setFrameRate(refreshRate);
 		} catch (error) {
 			setError(error as Error);
