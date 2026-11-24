@@ -52,9 +52,12 @@ jobs:
               if: github.event_name != 'pull_request'
               with:
                   path: docs/dist
+    consumers:
+        if: github.event_name != 'pull_request'
+        uses: ./.github/workflows/package-matrix.yml
     deploy:
         if: github.event_name != 'pull_request'
-        needs: build
+        needs: [build, consumers]
         runs-on: ubuntu-24.04
         permissions:
             pages: write

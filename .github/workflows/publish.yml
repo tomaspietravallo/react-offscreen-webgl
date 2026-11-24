@@ -19,6 +19,8 @@ jobs:
     test:
         name: Package tests
         runs-on: ubuntu-24.04
+        outputs:
+            package: ${{ steps.filter.outputs.package }}
         steps:
             - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
               if: github.event_name == 'pull_request'
@@ -60,9 +62,14 @@ jobs:
                   npm run test:unit
                   npm run test:browser
 
+    consumers:
+        needs: test
+        if: github.event_name == 'push' || needs.test.outputs.package == 'true'
+        uses: ./.github/workflows/package-matrix.yml
+
     release:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        needs: test
+        needs: [test, consumers]
         runs-on: ubuntu-24.04
         permissions:
             contents: write

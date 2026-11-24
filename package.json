@@ -28,6 +28,7 @@
 		"test:browser": "vitest run --project browser && npm run test:browser:isolated",
 		"test:browser:isolated": "CROSS_ORIGIN_ISOLATED=true vitest run --project browser",
 		"test:browser:headed": "HEADED=true vitest --project browser",
+		"test:package": "npm run build && node tests/package/run.mjs",
 		"prepare": "husky"
 	},
 	"keywords": [
@@ -54,6 +55,7 @@
 		"@types/react-dom": "19.3.0",
 		"@vitest/browser": "^3.0.0",
 		"conventional-changelog-conventionalcommits": "10.4.1",
+		"esbuild": "^0.25.5",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.1.2",
 		"playwright": "1.65.1",
