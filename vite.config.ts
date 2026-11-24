@@ -6,7 +6,7 @@ export default defineConfig({
 		lib: {
 			entry: './index.ts',
 			name: 'react-offscreen-webgl',
-			fileName: (format) => `index.${format}.js`,
+			fileName: (format) => (format === 'cjs' ? 'index.cjs' : `index.${format}.js`),
 			formats: ['cjs', 'es'],
 		},
 		rollupOptions: {
