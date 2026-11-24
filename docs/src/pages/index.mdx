@@ -241,6 +241,7 @@ Pass nested arrays to `fragmentShader` or `fragmentShaderURL` to configure shade
 - The component is browser-only. In an SSR framework, load it on the client (for example, a dynamic import with SSR disabled).
 - Worker callbacks share WebGL state; restore state you change so other components are unaffected.
 - Media and camera textures are not yet supported.
+- The worker ships inside the package and starts from a `blob:` URL. With a Content Security Policy, allow `worker-src blob:`.
 - The library requires the browser features listed below. The example needs WebGL enabled to render.
 
 <BrowserCompatibility />
