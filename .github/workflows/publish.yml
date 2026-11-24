@@ -38,7 +38,8 @@ jobs:
               with:
                   node-version: '26.13.0'
                   cache: npm
-            - run: npm ci
+                  cache-dependency-path: package.json
+            - run: npm install --no-package-lock
               if: github.event_name == 'push' || steps.filter.outputs.package == 'true'
             - name: Get Playwright version
               if: github.event_name == 'push' || steps.filter.outputs.package == 'true'
@@ -74,7 +75,7 @@ jobs:
               with:
                   node-version: '26.13.0'
                   package-manager-cache: false
-            - run: npm ci
+            - run: npm install --no-package-lock
             - run: npm run build
             - run: git merge-base --is-ancestor v0.0.8 HEAD
             - run: npx semantic-release

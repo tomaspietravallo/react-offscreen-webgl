@@ -31,7 +31,7 @@ Be sure to format the code before submitting changes in order to preserve the co
 
 ### Tests
 
-Install dependencies with `npm ci`, then run the type checks and Attest benchmarks with:
+Install dependencies with `npm install --no-package-lock`, then run the type checks and Attest benchmarks with:
 
 ```sh
 npm run test:types
@@ -39,7 +39,7 @@ npm run test:attest
 npm run bench:types
 ```
 
-The benchmark fails when type instantiations exceed a checked-in baseline by more than 20%. Use the lockfile to keep TypeScript and Attest versions consistent.
+The benchmark fails when type instantiations exceed a checked-in baseline by more than 20%. Lockfiles are ignored; dependency ranges are resolved on each clean install. If the benchmark changes after an install, check the resolved TypeScript and Attest versions before updating the baseline.
 
 ## Publishing
 
