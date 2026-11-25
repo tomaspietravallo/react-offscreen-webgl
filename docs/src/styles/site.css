@@ -63,7 +63,7 @@ a {
 	vertical-align: middle;
 	margin-right: 9px;
 }
-.alpha,
+.beta,
 .eyebrow,
 .section-number,
 .side-label,
@@ -73,7 +73,7 @@ a {
 	font-size: 14px;
 	letter-spacing: 0.09em;
 }
-.alpha {
+.beta {
 	color: #ededed;
 	border: 1px solid #55555b;
 	border-radius: 3px;
@@ -461,7 +461,7 @@ footer span:first-child {
 	.brand {
 		font-size: 14px;
 	}
-	.alpha {
+	.beta {
 		display: none;
 	}
 	.demo-controls,
