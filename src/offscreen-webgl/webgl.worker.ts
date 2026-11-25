@@ -17,6 +17,23 @@ function reportError(proxyId: string | undefined, error: unknown, id?: string): 
 	postMessage({ type: WorkerMessageType.ERROR, id, proxyId, error: OffscreenWebGLError.from(error).toJSON() });
 }
 
+sharedCanvas.addEventListener('webglcontextlost', (event) => {
+	event.preventDefault();
+	managers.forEach((_, proxyId) => postMessage({ type: WorkerMessageType.CONTEXT, proxyId, lost: true }));
+});
+
+sharedCanvas.addEventListener('webglcontextrestored', () => {
+	managers.forEach((manager, proxyId) => {
+		try {
+			const { error } = manager.restoreContext();
+			if (error) throw error;
+			postMessage({ type: WorkerMessageType.CONTEXT, proxyId, lost: false });
+		} catch (error) {
+			reportError(proxyId, error);
+		}
+	});
+});
+
 function present(canvasId: string, source: OffscreenCanvas, width: number, height: number): void {
 	const output = outputs.get(canvasId);
 	if (!output) return;

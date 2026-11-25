@@ -370,4 +370,38 @@ describe('WebGLManager (browser)', () => {
 			expect(readPixel(gl, 2, 2)).toEqual([0, 0, 255, 255]);
 		});
 	});
+
+	it('defers setup while the context is lost and rebuilds everything on restore', async () => {
+		const offscreen = new OffscreenCanvas(4, 4);
+		manager = WebGLManager.fromHTMLCanvasElement(offscreen as unknown as HTMLCanvasElement).data!;
+		manager.setVertexShader(DEFAULT_VS_SHADER);
+		manager.setFragmentShaders([UNIFORM_COLOR_FS]);
+		manager.setupWholeScreenQuad();
+		manager.updateUniform('u_color', [1, 0, 0]);
+		expect(manager.resize(4, 4).error).toBeNull();
+		const gl = manager.getGLContext();
+		const extension = gl.getExtension('WEBGL_lose_context')!;
+		const lost = new Promise((resolve) =>
+			offscreen.addEventListener('webglcontextlost', (event) => resolve(event.preventDefault()), { once: true })
+		);
+		extension.loseContext();
+		await lost;
+		await new Promise((resolve) => setTimeout(resolve));
+
+		expect(manager.setFragmentShaderGroups([[PINGPONG_PASS1_FS], [PINGPONG_PASS2_FS]]).error).toBeNull();
+		expect(manager.setupWholeScreenQuad().error).toBeNull();
+		expect(manager.resize(4, 4).error).toBeNull();
+		expect(manager.paintCanvas().error).toBeNull();
+
+		const restored = new Promise((resolve) => offscreen.addEventListener('webglcontextrestored', resolve, { once: true }));
+		extension.restoreContext();
+		await restored;
+		expect(manager.restoreContext().error).toBeNull();
+		expect(readPixel(gl, 1, 1)).toEqual([0, 0, 255, 255]);
+
+		expect(manager.setFragmentShaders([UNIFORM_COLOR_FS]).error).toBeNull();
+		expect(manager.setupWholeScreenQuad().error).toBeNull();
+		expect(manager.paintCanvas().error).toBeNull();
+		expect(readPixel(gl, 1, 1)).toEqual([255, 0, 0, 255]);
+	});
 });

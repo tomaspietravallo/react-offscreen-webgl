@@ -25,6 +25,7 @@ class WebGLManagerProxyClass {
 	private static pendingResponses: Record<string, { resolve: (value: any) => void; reject: (error: Error) => void }> = {};
 	private readonly PROXY_ID = `WebGLManagerProxy-${uuidv4()}`;
 	public onError: ((error: OffscreenWebGLError) => void) | null = null;
+	public onContextRestored: (() => void) | null = null;
 
 	private static readonly _managerPrototype = Object.getOwnPropertyNames(WebGLManager.prototype).reduce(
 		(acc, prop) => {
@@ -127,6 +128,10 @@ class WebGLManagerProxyClass {
 			} else {
 				console.error('[WebGLManagerProxy]', error);
 			}
+		} else if (data.type === WorkerMessageType.CONTEXT) {
+			const instance = WebGLManagerProxyClass.instances.get(data.proxyId);
+			if (!data.lost) instance?.onContextRestored?.();
+			else instance?.reportError(new OffscreenWebGLError('context-lost', 'The WebGL context was lost'));
 		}
 	}
 

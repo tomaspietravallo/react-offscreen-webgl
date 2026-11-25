@@ -113,7 +113,7 @@ You can also load a shader with `fragmentShaderURL`. URL paths beginning with `/
 | `disableResizeObserver` | `boolean`                              | Default `false`; disables automatic canvas resizing.                       |
 | `uniformStream`         | `UniformStream`                        | Numeric uniforms updated outside React; uses shared memory when available. |
 | `onError`               | `(error: OffscreenWebGLError) => void` | Called with each failure; see [Errors](#errors).                           |
-| `onReady`               | `() => void`                           | Called once the shaders are compiled and the first frame is painted.       |
+| `onReady`               | `() => void`                           | Called when the first frame is painted and after a WebGL context restore.  |
 | `u_<name>`              | `number \| number[]`                   | Float or float vector uniform.                                             |
 | `f_<name>`              | function                               | Run a callback in the worker; names containing `each` run every frame.     |
 
@@ -256,6 +256,10 @@ function report(error: OffscreenWebGLError) {
 
 Compile, link, fetch and unsupported errors during setup stop the component from rendering; `data-ready` stays `false` and `onReady` is not called. A callback that throws on every frame is reported once until it throws a different error or is replaced; the other callbacks keep running.
 
+### Context loss
+
+All components share one WebGL context, so a GPU reset or driver failure affects every canvas. When the context is lost, each component receives a `context-lost` error, keeps its last frame on screen and stops rendering; worker callbacks pause. Uniform and size changes made while the context is lost, and components mounted during the loss, are applied once it is restored. When the browser restores the context, the worker recompiles every shader, rebuilds buffers and framebuffers, reapplies uniforms and repaints. The component then clears the `context-lost` error and calls `onReady` again.
+
 </section>
 
 <section id="limitations">
@@ -265,6 +269,7 @@ Compile, link, fetch and unsupported errors during setup stop the component from
 
 - The component is browser-only. In an SSR framework, load it on the client (for example, a dynamic import with SSR disabled).
 - Worker callbacks share WebGL state; restore state you change so other components are unaffected.
+- After a WebGL context restore, GL objects that worker callbacks created themselves are invalid and must be recreated.
 - Media and camera textures are not yet supported.
 - The worker ships inside the package and starts from a `blob:` URL. With a Content Security Policy, allow `worker-src blob:`.
 - The library requires the browser features listed below. The example needs WebGL enabled to render.

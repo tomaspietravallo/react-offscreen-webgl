@@ -110,6 +110,11 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 	const setError = useCallback((error: unknown) => reportError(error, true), [reportError]);
 
+	const handleContextRestored = useCallback(() => {
+		setState((prev) => (prev.error?.kind === 'context-lost' ? { ...prev, hasError: false, error: null } : prev));
+		if (readyRef.current) onReadyRef.current?.();
+	}, []);
+
 	// Initialize WebGL
 	useEffect(() => {
 		if (!canvas || proxyRef.current) return;
@@ -134,6 +139,9 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				proxyRef.current = proxy;
 				proxy.onError = (error) => {
 					if (!cancelled) reportError(error, false);
+				};
+				proxy.onContextRestored = () => {
+					if (!cancelled) handleContextRestored();
 				};
 
 				const steps: Promise<unknown>[] = [

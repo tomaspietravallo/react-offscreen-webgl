@@ -9,6 +9,7 @@ export enum WorkerMessageType {
 	EVAL_FN = 'EVAL_FN',
 	RELEASE = 'RELEASE',
 	BATCH = 'BATCH',
+	CONTEXT = 'CONTEXT',
 }
 
 export type WorkerMessages =
@@ -18,4 +19,5 @@ export type WorkerMessages =
 	| { type: WorkerMessageType.CALL_METHOD; proxyId: string; id?: string; method: keyof WebGLManager; args: any[]; async?: boolean }
 	| { type: WorkerMessageType.RESPONSE; id: string; result?: any }
 	| { type: WorkerMessageType.EVAL_FN; proxyId: string; key: string; id?: string; fn: string; onEachFrame?: boolean; async?: boolean }
-	| { type: WorkerMessageType.BATCH; messages: WorkerMessages[] };
+	| { type: WorkerMessageType.BATCH; messages: WorkerMessages[] }
+	| { type: WorkerMessageType.CONTEXT; proxyId: string; lost: boolean };
