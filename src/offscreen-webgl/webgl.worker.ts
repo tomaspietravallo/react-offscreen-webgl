@@ -94,7 +94,7 @@ async function handle(data: Request): Promise<void> {
 		if (data.async && data.id) postMessage({ type: WorkerMessageType.RESPONSE, id: data.id, result });
 	} catch (error) {
 		if (data.type === WorkerMessageType.INIT) failures.set(data.proxyId, OffscreenWebGLError.from(error));
-		reportError(data.proxyId, error, 'id' in data ? data.id : undefined);
+		else reportError(data.proxyId, error, data.id);
 	}
 }
 
