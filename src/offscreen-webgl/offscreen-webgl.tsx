@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ShaderUniformProps } from './uniform-types';
 import type { UniformStream } from './uniform-stream';
+import type { OffscreenWebGLError } from './errors';
 import { RunOnWorkerContextFn, RunOnWorkerContextFnName, WebGLUniformName } from './gl-manager';
 import { uniformValuesEqual, useOffscreenWebGL } from './useOffscreenWebGL';
 
@@ -12,6 +13,8 @@ interface OffscreenWebGLProps<V, F, VURL, FURL> {
 	refreshRate?: number;
 	disableResizeObserver?: boolean;
 	uniformStream?: UniformStream;
+	onError?: (error: OffscreenWebGLError) => void;
+	onReady?: () => void;
 
 	[key: RunOnWorkerContextFnName]: RunOnWorkerContextFn<any>;
 }
@@ -32,8 +35,18 @@ export function OffscreenWebGL<
 	const VURL extends string | undefined = undefined,
 	const FURL extends string | string[][] | undefined = undefined,
 >(props: OffscreenWebGLProps<V, F, VURL, FURL> & ShaderUniformProps<NoInfer<V>, NoInfer<F>, NoInfer<VURL>, NoInfer<FURL>>) {
-	const { vertexShader, vertexShaderURL, fragmentShader, fragmentShaderURL, refreshRate, disableResizeObserver, uniformStream, ...rest } =
-		props;
+	const {
+		vertexShader,
+		vertexShaderURL,
+		fragmentShader,
+		fragmentShaderURL,
+		refreshRate,
+		disableResizeObserver,
+		uniformStream,
+		onError,
+		onReady,
+		...rest
+	} = props;
 
 	const [canvas, setCanvas] = useState<HTMLCanvasElement>();
 
@@ -55,7 +68,7 @@ export function OffscreenWebGL<
 		(a, b) => a?.toString() === b?.toString()
 	);
 
-	const { isLoading, isReady, hasError, error } = useOffscreenWebGL(canvas!, {
+	const { isLoading, isReady, hasError } = useOffscreenWebGL(canvas!, {
 		vertexShader,
 		vertexShaderURL,
 		fragmentShader,
@@ -65,11 +78,9 @@ export function OffscreenWebGL<
 		uniforms,
 		uniformStream,
 		functions,
+		onError,
+		onReady,
 	});
-
-	if (hasError) {
-		console.error('[OffscreenWebGL] Error:', error);
-	}
 
 	return (
 		<canvas
