@@ -6,7 +6,7 @@
 Render WebGL fragment shaders in React with an OffscreenCanvas and a shared Web Worker.
 
 > [!WARNING]
-> This project is alpha software. The API may change before a stable release.
+> This project is in beta. The API may change before a stable release.
 
 ```sh
 npm install react-offscreen-webgl
