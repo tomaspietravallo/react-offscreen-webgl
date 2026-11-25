@@ -1,7 +1,11 @@
 {
 	"name": "react-offscreen-webgl",
-	"version": "0.0.2-alpha",
+	"version": "0.2.1",
 	"description": "Render WebGL shaders in React using OffscreenCanvas and a Web Worker",
+	"homepage": "https://tomaspietravallo.github.io/react-offscreen-webgl/",
+	"bugs": {
+		"url": "https://github.com/tomaspietravallo/react-offscreen-webgl/issues"
+	},
 	"exports": {
 		"types": "./dist/src/index.d.ts",
 		"import": "./dist/index.es.js",
@@ -50,6 +54,7 @@
 	},
 	"devDependencies": {
 		"@ark/attest": "0.58.0",
+		"@semantic-release/git": "11.0.1",
 		"@semantic-release/github": "12.0.11",
 		"@types/react": "^19.1.8",
 		"@types/react-dom": "19.3.0",
