@@ -349,7 +349,23 @@ export class WebGLManager {
 
 		// Expect framebuffers to be initialized for subgroups groups >= 2
 		let [ping, pong] = this.framebuffers || [];
+		const scissorEnabled = this.gl.isEnabled(this.gl.SCISSOR_TEST);
+		const scissorBox: Int32Array = this.gl.getParameter(this.gl.SCISSOR_BOX);
+		this.gl.enable(this.gl.SCISSOR_TEST);
+		this.gl.scissor(0, 0, this.width, this.height);
 
+		try {
+			this.renderPasses(ping, pong);
+		} finally {
+			if (!scissorEnabled) this.gl.disable(this.gl.SCISSOR_TEST);
+			this.gl.scissor(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
+		}
+
+		return ok(this);
+	}
+
+	private renderPasses(ping: FrameBufferObject | undefined, pong: FrameBufferObject | undefined): void {
+		if (!this.fragmentShaderGroups || !this.shaderPrograms) return;
 		for (let groupIndex = 0; groupIndex < this.fragmentShaderGroups.length; groupIndex++) {
 			const group = this.fragmentShaderGroups[groupIndex];
 			const programGroup = this.shaderPrograms[groupIndex];
@@ -372,7 +388,6 @@ export class WebGLManager {
 				}
 
 				this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, targetFramebuffer);
-				this.gl.disable(this.gl.SCISSOR_TEST);
 				this.gl.viewport(0, 0, this.width, this.height);
 				this.gl.clear(this.gl.COLOR_BUFFER_BIT);
 
@@ -397,8 +412,6 @@ export class WebGLManager {
 				[ping, pong] = [pong, ping];
 			}
 		}
-
-		return ok(this);
 	}
 
 	public resize(width: number, height: number): Result<WebGLManager> {
