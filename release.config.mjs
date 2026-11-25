@@ -33,7 +33,8 @@ export default {
 				},
 			},
 		],
-		['@semantic-release/github', { successComment: false, failComment: false, releasedLabels: false, failTitle: false }],
 		'@semantic-release/npm',
+		['@semantic-release/git', { assets: ['package.json'], message: 'chore(release): ${nextRelease.version} [skip ci]' }],
+		['@semantic-release/github', { successComment: false, failComment: false, releasedLabels: false, failTitle: false }],
 	],
 };
