@@ -32,6 +32,8 @@ export class WebGLManager {
 	private frame: number = 0;
 	private timeElapsed: number = 0;
 	private startTime: number | null = null;
+	private pausedAt: number | null = null;
+	private frameInterval: number | null = null;
 	private onEachFrameFunctions: Record<string, RunOnWorkerContextFn> = {};
 	private canvas: HTMLCanvasElement;
 	private gl: WebGLRenderingContext;
@@ -116,6 +118,7 @@ export class WebGLManager {
 	public destroy(): Result<WebGLManager> {
 		this.frameTask?.cancel();
 		this.frameTask = null;
+		this.frameInterval = null;
 		WebGLManager.liveManagers.get(this.canvas)?.delete(this);
 		WebGLManager.fitCanvas(this.canvas);
 		this.readUniformStream = null;
@@ -313,6 +316,7 @@ export class WebGLManager {
 	}
 
 	public paintCanvas(): Result<WebGLManager> {
+		if (this.pausedAt !== null) return ok(this);
 		this.consumeUniformStream();
 		this.streamNeedsPaint = false;
 		if (this.isLost()) return ok(this);
@@ -569,12 +573,28 @@ export class WebGLManager {
 		if (frameRate <= 0) {
 			return err(new Error('[OffscreenCanvas @ GLManager] Frame rate must be greater than 0'));
 		}
-		const interval = 1000 / frameRate;
-		if (this.frameTask) {
-			this.frameTask.interval = interval;
+		this.frameInterval = 1000 / frameRate;
+		if (this.frameTask) this.frameTask.interval = this.frameInterval;
+		else if (this.pausedAt === null) this.startFrameTask();
+		return ok(this);
+	}
+
+	public setPaused(paused: boolean): Result<WebGLManager> {
+		if (paused === (this.pausedAt !== null)) return ok(this);
+		if (paused) {
+			this.pausedAt = performance.now();
+			this.frameTask?.cancel();
+			this.frameTask = null;
 			return ok(this);
 		}
-		this.frameTask = scheduleFrames(interval, (now) => {
+		if (this.startTime !== null) this.startTime += performance.now() - this.pausedAt!;
+		this.pausedAt = null;
+		if (this.frameInterval !== null) this.startFrameTask();
+		return this.paintCanvas();
+	}
+
+	private startFrameTask(): void {
+		this.frameTask = scheduleFrames(this.frameInterval!, (now) => {
 			this.startTime ??= now;
 			if (this.isLost()) return;
 			this.frame++;
@@ -589,7 +609,6 @@ export class WebGLManager {
 				this.reportOnce('paint', OffscreenWebGLError.from(error));
 			}
 		});
-		return ok(this);
 	}
 
 	private runFrameCallback(key: string, fn: RunOnWorkerContextFn): void {

@@ -9,6 +9,16 @@ import { OffscreenWebGLError, ShaderStage } from './errors';
 declare const process: { env: Record<string, string | undefined> };
 
 const STREAM_ATTACH_TIMEOUT_MS = 1000;
+const VISIBILITY_ROOT_MARGIN = '100px';
+
+interface PauseState {
+	offscreen: boolean;
+	hidden: boolean;
+	skipped: boolean;
+	parked: boolean;
+	sent: boolean;
+	scheduled: boolean;
+}
 
 function isProduction(): boolean {
 	try {
@@ -38,6 +48,7 @@ interface UseOffscreenWebGLOptions {
 	functions?: Record<string, RunOnWorkerContextFn>;
 	onError?: (error: OffscreenWebGLError) => void;
 	onReady?: () => void;
+	pauseWhenHidden?: boolean;
 }
 
 interface UseOffscreenWebGLState {
@@ -57,6 +68,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		uniforms = {},
 		uniformStream,
 		functions = {},
+		pauseWhenHidden = true,
 	} = options;
 
 	useState(() => {
@@ -75,6 +87,8 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	});
 
 	const proxyRef = useRef<WebGLManagerProxyType | null>(null);
+	const pauseRef = useRef<PauseState>({ offscreen: false, hidden: false, skipped: false, parked: false, sent: false, scheduled: false });
+	const resumeListenersRef = useRef(new Set<() => void>());
 	const observerRef = useRef<ResizeObserver | null>(null);
 	const sizeRef = useRef<[number, number]>([0, 0]);
 	const sentUniformsRef = useRef<Record<WebGLUniformName, number | number[]>>({});
@@ -115,6 +129,21 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		if (readyRef.current) onReadyRef.current?.();
 	}, []);
 
+	const syncPause = useCallback(() => {
+		const pause = pauseRef.current;
+		if (pause.scheduled) return;
+		pause.scheduled = true;
+		queueMicrotask(() => {
+			pause.scheduled = false;
+			const proxy = proxyRef.current;
+			const paused = pause.parked || pause.offscreen || pause.hidden || pause.skipped;
+			if (!proxy || paused === pause.sent) return;
+			pause.sent = paused;
+			if (!paused) resumeListenersRef.current.forEach((listener) => listener());
+			proxy.setPaused(paused);
+		});
+	}, []);
+
 	// Initialize WebGL
 	useEffect(() => {
 		if (!canvas || proxyRef.current) return;
@@ -122,6 +151,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		setState((prev) => ({ ...prev, isLoading: true, hasError: false, error: null }));
 
 		let cancelled = false;
+		pauseRef.current.sent = false;
 		const initializeWebGL = async () => {
 			try {
 				let size: [number, number] = [canvas.width, canvas.height];
@@ -209,14 +239,29 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		let frameTask: FrameTask | null = null;
 		let attachTimeout: ReturnType<typeof setTimeout> | undefined;
 		let latestValues: Record<WebGLUniformName, number | number[]> = {};
+		let heldWhilePaused = false;
+		const onResume = () => {
+			if (!heldWhilePaused) return;
+			heldWhilePaused = false;
+			proxy.updateUniforms(latestValues);
+		};
+		resumeListenersRef.current.add(onResume);
 		const useMessages = () => {
 			if (!active || unsubscribe) return;
 			unsubscribe = uniformStream.subscribe((values) => {
 				latestValues = values;
+				if (pauseRef.current.sent) {
+					heldWhilePaused = true;
+					return;
+				}
 				frameTask ??= scheduleFrames(1000 / refreshRateRef.current, () => {
 					frameTask?.cancel();
 					frameTask = null;
 					if (!active) return;
+					if (pauseRef.current.sent) {
+						heldWhilePaused = true;
+						return;
+					}
 					proxy.updateUniforms(latestValues);
 					proxy.paintCanvas();
 				});
@@ -239,6 +284,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		} else useMessages();
 		return () => {
 			active = false;
+			resumeListenersRef.current.delete(onResume);
 			clearTimeout(attachTimeout);
 			unsubscribe?.();
 			frameTask?.cancel();
@@ -314,6 +360,56 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 			setError(error);
 		}
 	}, [canvas, disableResizeObserver, state.isReady]);
+
+	useEffect(() => {
+		if (!state.isReady || !canvas || !proxyRef.current) return;
+		const pause = pauseRef.current;
+		pause.parked = false;
+		if (!pauseWhenHidden) pause.offscreen = pause.hidden = pause.skipped = false;
+		const cleanups: (() => void)[] = [];
+		if (pauseWhenHidden) {
+			const onVisibilityChange = () => {
+				pause.hidden = document.visibilityState === 'hidden';
+				syncPause();
+			};
+			onVisibilityChange();
+			document.addEventListener('visibilitychange', onVisibilityChange);
+			cleanups.push(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+
+			if (typeof IntersectionObserver === 'function') {
+				const observer = new IntersectionObserver(
+					(entries) => {
+						pause.offscreen = !entries[entries.length - 1].isIntersecting;
+						syncPause();
+					},
+					{ rootMargin: VISIBILITY_ROOT_MARGIN }
+				);
+				observer.observe(canvas);
+				cleanups.push(() => observer.disconnect());
+			}
+
+			if ('oncontentvisibilityautostatechange' in canvas) {
+				const skipped = new Set<EventTarget>();
+				const onContentVisibilityChange = (event: Event) => {
+					const target = event.target as Node;
+					if (!target.contains(canvas)) return;
+					if ((event as ContentVisibilityAutoStateChangeEvent).skipped) skipped.add(target);
+					else skipped.delete(target);
+					pause.skipped = skipped.size > 0;
+					syncPause();
+				};
+				document.addEventListener('contentvisibilityautostatechange', onContentVisibilityChange, true);
+				cleanups.push(() => document.removeEventListener('contentvisibilityautostatechange', onContentVisibilityChange, true));
+			}
+		}
+		syncPause();
+
+		return () => {
+			cleanups.forEach((cleanup) => cleanup());
+			pause.parked = true;
+			syncPause();
+		};
+	}, [canvas, pauseWhenHidden, state.isReady]);
 
 	return state;
 }
