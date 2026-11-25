@@ -28,6 +28,7 @@ async function fetchShaderSource(url: string, stage: ShaderStage, details: Shade
 
 export class WebGLManager {
 	public static readonly DEFAULT_FRAME_RATE = 30;
+	private static readonly liveManagers = new WeakMap<HTMLCanvasElement, Set<WebGLManager>>();
 	private frame: number = 0;
 	private timeElapsed: number = 0;
 	private startTime: number | null = null;
@@ -83,7 +84,7 @@ export class WebGLManager {
 			throw new OffscreenWebGLError('unsupported', 'WebGL is not supported');
 		}
 
-		return new Proxy(this, {
+		const manager = new Proxy(this, {
 			get: (target, prop, receiver) => {
 				if (prop.toString().endsWith('Async')) {
 					const originalMethod = target[prop.toString().slice(0, -5) as keyof WebGLManager] as (...args: any[]) => any;
@@ -92,6 +93,10 @@ export class WebGLManager {
 				return Reflect.get(target, prop, receiver);
 			},
 		});
+		let live = WebGLManager.liveManagers.get(canvas);
+		if (!live) WebGLManager.liveManagers.set(canvas, (live = new Set()));
+		live.add(manager);
+		return manager;
 	}
 
 	static fromHTMLCanvasElement(
@@ -111,6 +116,8 @@ export class WebGLManager {
 	public destroy(): Result<WebGLManager> {
 		this.frameTask?.cancel();
 		this.frameTask = null;
+		WebGLManager.liveManagers.get(this.canvas)?.delete(this);
+		WebGLManager.fitCanvas(this.canvas);
 		this.readUniformStream = null;
 		this.streamNeedsPaint = false;
 		try {
@@ -310,8 +317,7 @@ export class WebGLManager {
 		this.streamNeedsPaint = false;
 		if (this.isLost()) return ok(this);
 		if (this.shaderPrograms && this.fragmentShaderGroups) {
-			if (this.canvas.width < this.width) this.canvas.width = this.width;
-			if (this.canvas.height < this.height) this.canvas.height = this.height;
+			if (this.canvas.width < this.width || this.canvas.height < this.height) WebGLManager.fitCanvas(this.canvas);
 			const result = this.renderWithFragmentShaderGroups();
 			if (!result.error) this.onPaint?.(this.width, this.height);
 			return result;
@@ -414,9 +420,27 @@ export class WebGLManager {
 		}
 	}
 
+	private static fitCanvas(canvas: HTMLCanvasElement): void {
+		let width = 1;
+		let height = 1;
+		WebGLManager.liveManagers.get(canvas)?.forEach((manager) => {
+			if (!manager.shaderPrograms) return;
+			width = Math.max(width, manager.width);
+			height = Math.max(height, manager.height);
+		});
+		if (canvas.width * canvas.height > 2 * width * height) {
+			canvas.width = width;
+			canvas.height = height;
+		} else if (canvas.width < width || canvas.height < height) {
+			canvas.width = Math.max(canvas.width, width);
+			canvas.height = Math.max(canvas.height, height);
+		}
+	}
+
 	public resize(width: number, height: number): Result<WebGLManager> {
 		this.width = width;
 		this.height = height;
+		WebGLManager.fitCanvas(this.canvas);
 		if (this.usesPingPongGroups && !this.isLost()) {
 			const result = this.setupPingPongBuffers(width, height);
 			if (result.error) return result;
