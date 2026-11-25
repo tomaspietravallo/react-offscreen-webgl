@@ -9,13 +9,12 @@ import { OffscreenWebGLError, ShaderStage } from './errors';
 declare const process: { env: Record<string, string | undefined> };
 
 const STREAM_ATTACH_TIMEOUT_MS = 1000;
-const VISIBILITY_ROOT_MARGIN = '100px';
+const VISIBILITY_MARGIN = '100px';
 
 interface PauseState {
 	offscreen: boolean;
 	hidden: boolean;
 	skipped: boolean;
-	parked: boolean;
 	sent: boolean;
 	scheduled: boolean;
 }
@@ -87,7 +86,8 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	});
 
 	const proxyRef = useRef<WebGLManagerProxyType | null>(null);
-	const pauseRef = useRef<PauseState>({ offscreen: false, hidden: false, skipped: false, parked: false, sent: false, scheduled: false });
+	const sessionRef = useRef<{ canvas: HTMLCanvasElement; cancelled: boolean; release?: ReturnType<typeof setTimeout> } | null>(null);
+	const pauseRef = useRef<PauseState>({ offscreen: false, hidden: false, skipped: false, sent: false, scheduled: false });
 	const resumeListenersRef = useRef(new Set<() => void>());
 	const observerRef = useRef<ResizeObserver | null>(null);
 	const sizeRef = useRef<[number, number]>([0, 0]);
@@ -136,7 +136,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		queueMicrotask(() => {
 			pause.scheduled = false;
 			const proxy = proxyRef.current;
-			const paused = pause.parked || pause.offscreen || pause.hidden || pause.skipped;
+			const paused = pause.offscreen || pause.hidden || pause.skipped;
 			if (!proxy || paused === pause.sent) return;
 			pause.sent = paused;
 			if (!paused) resumeListenersRef.current.forEach((listener) => listener());
@@ -144,13 +144,37 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		});
 	}, []);
 
+	const destroySession = useCallback(() => {
+		const session = sessionRef.current;
+		if (session) {
+			session.cancelled = true;
+			clearTimeout(session.release);
+		}
+		sessionRef.current = null;
+		readyRef.current = false;
+		proxyRef.current?.destroy();
+		proxyRef.current = null;
+	}, []);
+
 	// Initialize WebGL
 	useEffect(() => {
-		if (!canvas || proxyRef.current) return;
+		if (!canvas) return;
+		const release = () => {
+			const session = sessionRef.current;
+			if (!session || !canvas.isConnected) return destroySession();
+			session.release = setTimeout(destroySession);
+		};
+		const previous = sessionRef.current;
+		if (previous?.canvas === canvas) {
+			clearTimeout(previous.release);
+			return release;
+		}
+		if (previous) destroySession();
 
-		setState((prev) => ({ ...prev, isLoading: true, hasError: false, error: null }));
+		setState((prev) => ({ ...prev, isLoading: true, isReady: false, hasError: false, error: null, proxy: null }));
 
-		let cancelled = false;
+		const session = { canvas, cancelled: false };
+		sessionRef.current = session;
 		pauseRef.current.sent = false;
 		const initializeWebGL = async () => {
 			try {
@@ -168,10 +192,10 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 				proxyRef.current = proxy;
 				proxy.onError = (error) => {
-					if (!cancelled) reportError(error, false);
+					if (!session.cancelled) reportError(error, false);
 				};
 				proxy.onContextRestored = () => {
-					if (!cancelled) handleContextRestored();
+					if (!session.cancelled) handleContextRestored();
 				};
 
 				const steps: Promise<unknown>[] = [
@@ -205,7 +229,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 				steps.push(proxy.updateUniformAsync('u_resolution', size), proxy.resizeAsync(size[0], size[1]));
 				await Promise.all(steps);
-				if (cancelled) return;
+				if (session.cancelled) return;
 				setState((prev) => ({
 					...prev,
 					isLoading: false,
@@ -215,20 +239,13 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				readyRef.current = true;
 				onReadyRef.current?.();
 			} catch (error) {
-				if (!cancelled) setError(error);
+				if (!session.cancelled) setError(error);
 			}
 		};
 
 		initializeWebGL();
 
-		return () => {
-			cancelled = true;
-			readyRef.current = false;
-			if (proxyRef.current) {
-				proxyRef.current.destroy();
-				proxyRef.current = null;
-			}
-		};
+		return release;
 	}, [canvas]);
 
 	useEffect(() => {
@@ -364,7 +381,6 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	useEffect(() => {
 		if (!state.isReady || !canvas || !proxyRef.current) return;
 		const pause = pauseRef.current;
-		pause.parked = false;
 		if (!pauseWhenHidden) pause.offscreen = pause.hidden = pause.skipped = false;
 		const cleanups: (() => void)[] = [];
 		if (pauseWhenHidden) {
@@ -382,7 +398,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 						pause.offscreen = !entries[entries.length - 1].isIntersecting;
 						syncPause();
 					},
-					{ rootMargin: VISIBILITY_ROOT_MARGIN }
+					{ rootMargin: VISIBILITY_MARGIN, scrollMargin: VISIBILITY_MARGIN } as IntersectionObserverInit
 				);
 				observer.observe(canvas);
 				cleanups.push(() => observer.disconnect());
@@ -406,8 +422,6 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 		return () => {
 			cleanups.forEach((cleanup) => cleanup());
-			pause.parked = true;
-			syncPause();
 		};
 	}, [canvas, pauseWhenHidden, state.isReady]);
 

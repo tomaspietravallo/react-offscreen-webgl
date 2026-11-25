@@ -12,6 +12,7 @@ const queues = new Map<string, Promise<void>>();
 const sharedCanvas = new OffscreenCanvas(1, 1);
 sharedCanvas.getContext('webgl');
 const outputs = new Map<string, OffscreenCanvasRenderingContext2D>();
+const owners = new Map<string, string>();
 
 function reportError(proxyId: string | undefined, error: unknown, id?: string): void {
 	postMessage({ type: WorkerMessageType.ERROR, id, proxyId, error: OffscreenWebGLError.from(error).toJSON() });
@@ -65,18 +66,27 @@ async function handle(data: Request): Promise<void> {
 			);
 			if (result.error) throw result.error;
 			managers.set(data.proxyId, result.data);
+			owners.set(data.proxyId, data.canvasId);
 			failures.delete(data.proxyId);
 			return;
 		}
 
 		const manager = managers.get(data.proxyId);
+		if (!manager && data.type === WorkerMessageType.CALL_METHOD && data.method === 'destroy') {
+			failures.delete(data.proxyId);
+			if (data.async && data.id) postMessage({ type: WorkerMessageType.RESPONSE, id: data.id, result: null });
+			return;
+		}
 		if (!manager) throw failures.get(data.proxyId) || new Error(`WebGLManager not initialized for ${data.proxyId}`);
 		let result: any;
 		if (data.type === WorkerMessageType.CALL_METHOD) {
 			const method = manager[data.method];
 			if (typeof method !== 'function') throw new Error(`Method ${data.method} not found`);
 			result = await (method as (...args: any[]) => any).apply(manager, data.args);
-			if (data.method === 'destroy') managers.delete(data.proxyId);
+			if (data.method === 'destroy') {
+				managers.delete(data.proxyId);
+				owners.delete(data.proxyId);
+			}
 		} else {
 			try {
 				const fn = new Function('manager', 'frame', 'timeElapsed', `return (${data.fn})(manager, frame, timeElapsed);`);
@@ -102,6 +112,9 @@ function dispatch(data: WorkerMessages): void {
 	if (data?.type === WorkerMessageType.BATCH) return data.messages.forEach(dispatch);
 	if (data?.type === WorkerMessageType.RELEASE) {
 		outputs.delete(data.canvasId);
+		owners.forEach((canvasId, proxyId) => {
+			if (canvasId === data.canvasId) dispatch({ type: WorkerMessageType.CALL_METHOD, proxyId, method: 'destroy', args: [] });
+		});
 		return;
 	}
 	if (data?.type !== WorkerMessageType.INIT && data?.type !== WorkerMessageType.CALL_METHOD && data?.type !== WorkerMessageType.EVAL_FN)
