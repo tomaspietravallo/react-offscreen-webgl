@@ -51,7 +51,10 @@ describe('shared worker context', () => {
 			await expect(
 				proxies[19].runOnContextAsync('compare', (manager) => manager.getGLContext() === (globalThis as any).sharedTestContext)
 			).resolves.toBe(true);
-			await expect(proxies[19].setFragmentShadersAsync(['invalid shader'])).rejects.toThrow('compile Fragment Shader');
+			await expect(proxies[19].setFragmentShadersAsync(['invalid shader'])).rejects.toMatchObject({
+				kind: 'compile',
+				message: expect.stringMatching(/^Fragment shader failed to compile/),
+			});
 			await proxies[0].destroyAsync();
 			firstDestroyed = true;
 			await proxies[19].paintCanvasAsync();

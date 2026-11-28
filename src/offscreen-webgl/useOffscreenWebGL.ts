@@ -4,8 +4,27 @@ import { WebGLManagerProxy, WebGLManagerProxyType } from './proxy';
 import { DEFAULT_FS_SHADER, DEFAULT_VS_SHADER } from '../defaults';
 import type { UniformStream } from './uniform-stream';
 import { FrameTask, scheduleFrames } from './frame-scheduler';
+import { OffscreenWebGLError, ShaderStage } from './errors';
+
+declare const process: { env: Record<string, string | undefined> };
 
 const STREAM_ATTACH_TIMEOUT_MS = 1000;
+
+function isProduction(): boolean {
+	try {
+		return process.env.NODE_ENV === 'production';
+	} catch {
+		return false;
+	}
+}
+
+function resolveShaderURL(url: string, stage: ShaderStage): string {
+	try {
+		return new URL(url, window.location.origin).toString();
+	} catch (error) {
+		throw new OffscreenWebGLError('fetch', `Invalid ${stage} shader URL ${url}`, error);
+	}
+}
 
 interface UseOffscreenWebGLOptions {
 	vertexShader?: string;
@@ -17,13 +36,15 @@ interface UseOffscreenWebGLOptions {
 	uniforms?: Record<WebGLUniformName, number | number[]>;
 	uniformStream?: UniformStream;
 	functions?: Record<string, RunOnWorkerContextFn>;
+	onError?: (error: OffscreenWebGLError) => void;
+	onReady?: () => void;
 }
 
 interface UseOffscreenWebGLState {
 	isLoading: boolean;
 	isReady: boolean;
 	hasError: boolean;
-	error: Error | null;
+	error: OffscreenWebGLError | null;
 	proxy: WebGLManagerProxyType | null;
 }
 
@@ -61,15 +82,37 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	const sentRefreshRateRef = useRef<number | null>(null);
 	const refreshRateRef = useRef(refreshRate);
 	refreshRateRef.current = refreshRate;
+	const onErrorRef = useRef(options.onError);
+	onErrorRef.current = options.onError;
+	const onReadyRef = useRef(options.onReady);
+	onReadyRef.current = options.onReady;
+	const readyRef = useRef(false);
+	const loggedErrorsRef = useRef(new Set<string>());
 
-	const setError = useCallback((error: Error) => {
+	const reportError = useCallback((cause: unknown, fatal: boolean) => {
+		const error = OffscreenWebGLError.from(cause);
 		setState((prev) => ({
 			...prev,
 			hasError: true,
 			error,
 			isLoading: false,
-			isReady: false,
+			isReady: fatal ? false : prev.isReady,
 		}));
+		if (onErrorRef.current) {
+			onErrorRef.current(error);
+			return;
+		}
+		const key = `${error.kind}:${error.message}`;
+		if (isProduction() || loggedErrorsRef.current.has(key)) return;
+		loggedErrorsRef.current.add(key);
+		console.error('[OffscreenWebGL]', error);
+	}, []);
+
+	const setError = useCallback((error: unknown) => reportError(error, true), [reportError]);
+
+	const handleContextRestored = useCallback(() => {
+		setState((prev) => (prev.error?.kind === 'context-lost' ? { ...prev, hasError: false, error: null } : prev));
+		if (readyRef.current) onReadyRef.current?.();
 	}, []);
 
 	// Initialize WebGL
@@ -94,10 +137,16 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				sizeRef.current = size;
 				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 				proxyRef.current = proxy;
+				proxy.onError = (error) => {
+					if (!cancelled) reportError(error, false);
+				};
+				proxy.onContextRestored = () => {
+					if (!cancelled) handleContextRestored();
+				};
 
 				const steps: Promise<unknown>[] = [
 					options.vertexShaderURL
-						? proxy.setRemoteVertexShaderAsync(new URL(options.vertexShaderURL, window.location.origin).toString())
+						? proxy.setRemoteVertexShaderAsync(resolveShaderURL(options.vertexShaderURL, 'vertex'))
 						: proxy.setVertexShaderAsync(vertexShader),
 				];
 
@@ -105,7 +154,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 					steps.push(
 						Array.isArray(options.fragmentShaderURL)
 							? proxy.setRemoteFragmentShaderGroupsAsync(options.fragmentShaderURL)
-							: proxy.setRemoteFragmentShadersAsync(new URL(options.fragmentShaderURL, window.location.origin).toString())
+							: proxy.setRemoteFragmentShadersAsync(resolveShaderURL(options.fragmentShaderURL, 'fragment'))
 					);
 				} else {
 					steps.push(
@@ -133,8 +182,10 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 					isReady: true,
 					proxy,
 				}));
+				readyRef.current = true;
+				onReadyRef.current?.();
 			} catch (error) {
-				if (!cancelled) setError(error as Error);
+				if (!cancelled) setError(error);
 			}
 		};
 
@@ -142,6 +193,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 		return () => {
 			cancelled = true;
+			readyRef.current = false;
 			if (proxyRef.current) {
 				proxyRef.current.destroy();
 				proxyRef.current = null;
@@ -181,7 +233,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				(error) => {
 					clearTimeout(attachTimeout);
 					if (error instanceof DOMException && error.name === 'DataCloneError') useMessages();
-					else if (active) setError(error as Error);
+					else if (active) setError(error);
 				}
 			);
 		} else useMessages();
@@ -218,7 +270,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				proxyRef.current.runOnContext(key, fn, key.includes('each'));
 			}
 		} catch (error) {
-			setError(error as Error);
+			setError(error);
 		}
 	}, [functions, state.isReady]);
 
@@ -230,7 +282,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 			sentRefreshRateRef.current = refreshRate;
 			proxyRef.current.setFrameRate(refreshRate);
 		} catch (error) {
-			setError(error as Error);
+			setError(error);
 		}
 	}, [refreshRate, state.isReady]);
 
@@ -259,7 +311,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				observerRef.current = null;
 			};
 		} catch (error) {
-			setError(error as Error);
+			setError(error);
 		}
 	}, [canvas, disableResizeObserver, state.isReady]);
 

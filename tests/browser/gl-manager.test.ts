@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { WebGLManager } from '../../src/offscreen-webgl/gl-manager';
 import { DEFAULT_VS_SHADER } from '../../src/defaults';
+import { OffscreenWebGLError } from '../../src/offscreen-webgl/errors';
 
 // ── Shader sources used in tests ──────────────────────────────────────────────
 
@@ -29,6 +30,21 @@ const UNIFORM_COLOR_FS = `
 `;
 
 const INVALID_FS = `this is not valid GLSL!`;
+
+const UNDECLARED_FS = `
+  precision highp float;
+  void main() {
+    gl_FragColor = vec4(missing, 1.0);
+  }
+`;
+
+const UNDECLARED_VARYING_FS = `
+  precision highp float;
+  varying vec2 v_uv;
+  void main() {
+    gl_FragColor = vec4(v_uv, 0.0, 1.0);
+  }
+`;
 
 // Pass 1: renders solid red into FBO_B
 const PINGPONG_PASS1_FS = `
@@ -225,7 +241,7 @@ describe('WebGLManager (browser)', () => {
 
 	// ── Shader compilation failure ──────────────────────────────────────────
 
-	it('setFragmentShaders returns err for invalid GLSL', () => {
+	it('setFragmentShaders returns a compile error with the compiler log for invalid GLSL', () => {
 		const result = WebGLManager.fromHTMLCanvasElement(canvas);
 		expect(result.error).toBeNull();
 		manager = result.data!;
@@ -233,8 +249,82 @@ describe('WebGLManager (browser)', () => {
 		manager.setVertexShader(DEFAULT_VS_SHADER);
 
 		const fragResult = manager.setFragmentShaders([INVALID_FS]);
-		expect(fragResult.error).not.toBeNull();
 		expect(fragResult.data).toBeNull();
+		const error = fragResult.error as OffscreenWebGLError;
+		expect(error).toBeInstanceOf(OffscreenWebGLError);
+		expect(error.kind).toBe('compile');
+		expect(error.message).toMatch(/^Fragment shader failed to compile:\nERROR: 0:1: /);
+	});
+
+	it('reports the failing pass of a multipass pipeline', () => {
+		manager = WebGLManager.fromHTMLCanvasElement(canvas).data!;
+		manager.setVertexShader(DEFAULT_VS_SHADER);
+		const error = manager.setFragmentShaderGroups([[SOLID_RED_FS], [SOLID_RED_FS, UNDECLARED_FS]]).error as OffscreenWebGLError;
+		expect(error.kind).toBe('compile');
+		expect(error.message).toMatch(/^Fragment shader \(group 1, pass 1\) failed to compile:\nERROR: 0:4: .*missing/);
+	});
+
+	it('returns a link error with the program log', () => {
+		manager = WebGLManager.fromHTMLCanvasElement(canvas).data!;
+		manager.setVertexShader(DEFAULT_VS_SHADER);
+		const error = manager.setFragmentShaders([UNDECLARED_VARYING_FS]).error as OffscreenWebGLError;
+		expect(error.kind).toBe('link');
+		expect(error.message).toMatch(/^Fragment shader failed to link:\n.*v_uv/);
+	});
+
+	it('reports vertex shader compile errors and keeps the previous shader', () => {
+		manager = buildManager(SOLID_RED_FS);
+		const error = manager.setVertexShader('void main() { gl_Position = nope; }').error as OffscreenWebGLError;
+		expect(error.message).toMatch(/^Vertex shader failed to compile:/);
+		expect(manager.setFragmentShaders([SOLID_RED_FS]).error).toBeNull();
+	});
+
+	it('reports fetch failures with the shader URL', async () => {
+		manager = WebGLManager.fromHTMLCanvasElement(canvas).data!;
+		const url = 'http://127.0.0.1:1/missing.glsl';
+		const vertex = await manager.setRemoteVertexShader(url);
+		expect(vertex.error).toMatchObject({ kind: 'fetch', message: `Failed to fetch Vertex shader (${url})` });
+		manager.setVertexShader(DEFAULT_VS_SHADER);
+		const fragment = await manager.setRemoteFragmentShaderGroups([[url], [url]]);
+		expect(fragment.error).toMatchObject({ kind: 'fetch', message: `Failed to fetch Fragment shader (group 0, pass 0, ${url})` });
+	});
+
+	it('runs *Async methods on the manager with their arguments', async () => {
+		manager = WebGLManager.fromHTMLCanvasElement(canvas).data!;
+		const async = manager as unknown as Record<string, (...args: any[]) => Promise<{ error: Error | null }>>;
+		expect((await async.setVertexShaderAsync(DEFAULT_VS_SHADER)).error).toBeNull();
+		expect((await async.setFragmentShadersAsync([SOLID_RED_FS])).error).toBeNull();
+		expect(manager.getProgram()).toBeTruthy();
+	});
+
+	it('reports a failing per-frame callback once and keeps running the others', async () => {
+		const onError = vi.fn();
+		manager = WebGLManager.fromHTMLCanvasElement(canvas, 4, 4, undefined, onError).data!;
+		let frames = 0;
+		manager.runOnContext(
+			'f_each_bad',
+			() => {
+				throw new Error('boom');
+			},
+			true
+		);
+		manager.runOnContext('f_each_count', () => frames++, true);
+		manager.setFrameRate(240);
+		await vi.waitFor(() => expect(frames).toBeGreaterThan(5));
+		expect(onError).toHaveBeenCalledTimes(1);
+		expect(onError.mock.calls[0][0]).toMatchObject({
+			kind: 'callback',
+			message: 'f_each_bad threw',
+			cause: expect.objectContaining({ message: 'boom' }),
+		});
+		manager.runOnContext(
+			'f_each_bad',
+			() => {
+				throw new Error('boom');
+			},
+			true
+		);
+		await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(2));
 	});
 
 	// ── checkWebGLVitals ────────────────────────────────────────────────────
@@ -279,5 +369,39 @@ describe('WebGLManager (browser)', () => {
 			expect(readPixel(gl, 1, 1)).toEqual([0, 0, 255, 255]);
 			expect(readPixel(gl, 2, 2)).toEqual([0, 0, 255, 255]);
 		});
+	});
+
+	it('defers setup while the context is lost and rebuilds everything on restore', async () => {
+		const offscreen = new OffscreenCanvas(4, 4);
+		manager = WebGLManager.fromHTMLCanvasElement(offscreen as unknown as HTMLCanvasElement).data!;
+		manager.setVertexShader(DEFAULT_VS_SHADER);
+		manager.setFragmentShaders([UNIFORM_COLOR_FS]);
+		manager.setupWholeScreenQuad();
+		manager.updateUniform('u_color', [1, 0, 0]);
+		expect(manager.resize(4, 4).error).toBeNull();
+		const gl = manager.getGLContext();
+		const extension = gl.getExtension('WEBGL_lose_context')!;
+		const lost = new Promise((resolve) =>
+			offscreen.addEventListener('webglcontextlost', (event) => resolve(event.preventDefault()), { once: true })
+		);
+		extension.loseContext();
+		await lost;
+		await new Promise((resolve) => setTimeout(resolve));
+
+		expect(manager.setFragmentShaderGroups([[PINGPONG_PASS1_FS], [PINGPONG_PASS2_FS]]).error).toBeNull();
+		expect(manager.setupWholeScreenQuad().error).toBeNull();
+		expect(manager.resize(4, 4).error).toBeNull();
+		expect(manager.paintCanvas().error).toBeNull();
+
+		const restored = new Promise((resolve) => offscreen.addEventListener('webglcontextrestored', resolve, { once: true }));
+		extension.restoreContext();
+		await restored;
+		expect(manager.restoreContext().error).toBeNull();
+		expect(readPixel(gl, 1, 1)).toEqual([0, 0, 255, 255]);
+
+		expect(manager.setFragmentShaders([UNIFORM_COLOR_FS]).error).toBeNull();
+		expect(manager.setupWholeScreenQuad().error).toBeNull();
+		expect(manager.paintCanvas().error).toBeNull();
+		expect(readPixel(gl, 1, 1)).toEqual([255, 0, 0, 255]);
 	});
 });

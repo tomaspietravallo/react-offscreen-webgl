@@ -1,3 +1,4 @@
+import { OffscreenWebGLError } from './errors';
 import { WebGLManager } from './gl-manager';
 import { WorkerMessageType, type WorkerMessages } from './worker-messages';
 
@@ -6,11 +7,32 @@ type Request = Extract<
 	{ proxyId: string; type: WorkerMessageType.INIT | WorkerMessageType.CALL_METHOD | WorkerMessageType.EVAL_FN }
 >;
 const managers = new Map<string, WebGLManager>();
-const failures = new Map<string, Error>();
+const failures = new Map<string, OffscreenWebGLError>();
 const queues = new Map<string, Promise<void>>();
 const sharedCanvas = new OffscreenCanvas(1, 1);
 sharedCanvas.getContext('webgl');
 const outputs = new Map<string, OffscreenCanvasRenderingContext2D>();
+
+function reportError(proxyId: string | undefined, error: unknown, id?: string): void {
+	postMessage({ type: WorkerMessageType.ERROR, id, proxyId, error: OffscreenWebGLError.from(error).toJSON() });
+}
+
+sharedCanvas.addEventListener('webglcontextlost', (event) => {
+	event.preventDefault();
+	managers.forEach((_, proxyId) => postMessage({ type: WorkerMessageType.CONTEXT, proxyId, lost: true }));
+});
+
+sharedCanvas.addEventListener('webglcontextrestored', () => {
+	managers.forEach((manager, proxyId) => {
+		try {
+			const { error } = manager.restoreContext();
+			if (error) throw error;
+			postMessage({ type: WorkerMessageType.CONTEXT, proxyId, lost: false });
+		} catch (error) {
+			reportError(proxyId, error);
+		}
+	});
+});
 
 function present(canvasId: string, source: OffscreenCanvas, width: number, height: number): void {
 	const output = outputs.get(canvasId);
@@ -30,7 +52,7 @@ async function handle(data: Request): Promise<void> {
 			const canvas = sharedCanvas;
 			if (data.output) {
 				const output = data.output.getContext('2d');
-				if (!output) throw new Error('2D canvas rendering is not supported');
+				if (!output) throw new OffscreenWebGLError('unsupported', '2D canvas rendering is not supported');
 				output.globalCompositeOperation = 'copy';
 				outputs.set(data.canvasId, output);
 			}
@@ -38,7 +60,8 @@ async function handle(data: Request): Promise<void> {
 				canvas as unknown as HTMLCanvasElement,
 				data.width,
 				data.height,
-				(width, height) => present(data.canvasId, canvas, width, height)
+				(width, height) => present(data.canvasId, canvas, width, height),
+				(error) => reportError(data.proxyId, error)
 			);
 			if (result.error) throw result.error;
 			managers.set(data.proxyId, result.data);
@@ -55,8 +78,12 @@ async function handle(data: Request): Promise<void> {
 			result = await (method as (...args: any[]) => any).apply(manager, data.args);
 			if (data.method === 'destroy') managers.delete(data.proxyId);
 		} else {
-			const fn = new Function('manager', 'frame', 'timeElapsed', `return (${data.fn})(manager, frame, timeElapsed);`);
-			result = await manager.runOnContext(data.key, fn as any, data.onEachFrame);
+			try {
+				const fn = new Function('manager', 'frame', 'timeElapsed', `return (${data.fn})(manager, frame, timeElapsed);`);
+				result = await manager.runOnContext(data.key, fn as any, data.onEachFrame);
+			} catch (error) {
+				throw new OffscreenWebGLError('callback', `${data.key} threw`, error);
+			}
 		}
 
 		if (data.type === WorkerMessageType.CALL_METHOD && result && typeof result === 'object' && 'error' in result && 'data' in result) {
@@ -66,9 +93,8 @@ async function handle(data: Request): Promise<void> {
 		}
 		if (data.async && data.id) postMessage({ type: WorkerMessageType.RESPONSE, id: data.id, result });
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		if (data.type === WorkerMessageType.INIT) failures.set(data.proxyId, new Error(message));
-		postMessage({ type: WorkerMessageType.ERROR, id: 'id' in data ? data.id : undefined, error: message });
+		if (data.type === WorkerMessageType.INIT) failures.set(data.proxyId, OffscreenWebGLError.from(error));
+		else reportError(data.proxyId, error, data.id);
 	}
 }
 
@@ -78,7 +104,8 @@ function dispatch(data: WorkerMessages): void {
 		outputs.delete(data.canvasId);
 		return;
 	}
-	if (!data || !('proxyId' in data)) return;
+	if (data?.type !== WorkerMessageType.INIT && data?.type !== WorkerMessageType.CALL_METHOD && data?.type !== WorkerMessageType.EVAL_FN)
+		return;
 	const queue = (queues.get(data.proxyId) || Promise.resolve()).then(() => handle(data));
 	queues.set(data.proxyId, queue);
 	void queue.finally(() => {

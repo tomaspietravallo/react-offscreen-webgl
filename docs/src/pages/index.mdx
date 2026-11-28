@@ -103,17 +103,19 @@ You can also load a shader with `fragmentShaderURL`. URL paths beginning with `/
 
 <div className="table-wrap">
 
-| Prop                    | Type                   | Default / purpose                                                          |
-| ----------------------- | ---------------------- | -------------------------------------------------------------------------- |
-| `fragmentShader`        | `string \| string[][]` | Built-in UV gradient; inline fragment source or shader groups.             |
-| `fragmentShaderURL`     | `string \| string[][]` | Fetch fragment source from URL(s); takes precedence over inline source.    |
-| `vertexShader`          | `string`               | Built-in passthrough vertex shader.                                        |
-| `vertexShaderURL`       | `string`               | Fetch vertex source; takes precedence over inline source.                  |
-| `refreshRate`           | `number`               | Render loop frequency in frames per second; default `30`.                  |
-| `disableResizeObserver` | `boolean`              | Default `false`; disables automatic canvas resizing.                       |
-| `uniformStream`         | `UniformStream`        | Numeric uniforms updated outside React; uses shared memory when available. |
-| `u_<name>`              | `number \| number[]`   | Float or float vector uniform.                                             |
-| `f_<name>`              | function               | Run a callback in the worker; names containing `each` run every frame.     |
+| Prop                    | Type                                   | Default / purpose                                                          |
+| ----------------------- | -------------------------------------- | -------------------------------------------------------------------------- |
+| `fragmentShader`        | `string \| string[][]`                 | Built-in UV gradient; inline fragment source or shader groups.             |
+| `fragmentShaderURL`     | `string \| string[][]`                 | Fetch fragment source from URL(s); takes precedence over inline source.    |
+| `vertexShader`          | `string`                               | Built-in passthrough vertex shader.                                        |
+| `vertexShaderURL`       | `string`                               | Fetch vertex source; takes precedence over inline source.                  |
+| `refreshRate`           | `number`                               | Render loop frequency in frames per second; default `30`.                  |
+| `disableResizeObserver` | `boolean`                              | Default `false`; disables automatic canvas resizing.                       |
+| `uniformStream`         | `UniformStream`                        | Numeric uniforms updated outside React; uses shared memory when available. |
+| `onError`               | `(error: OffscreenWebGLError) => void` | Called with each failure; see [Errors](#errors).                           |
+| `onReady`               | `() => void`                           | Called when the first frame is painted and after a WebGL context restore.  |
+| `u_<name>`              | `number \| number[]`                   | Float or float vector uniform.                                             |
+| `f_<name>`              | function                               | Run a callback in the worker; names containing `each` run every frame.     |
 
 </div>
 </section>
@@ -233,13 +235,41 @@ Pass nested arrays to `fragmentShader` or `fragmentShaderURL` to configure shade
 
 </section>
 
-<section id="limitations">
+<section id="errors">
 <div className="section-number">08</div>
+
+## Errors
+
+Pass `onError` to receive failures as `OffscreenWebGLError` instances. The canvas also gets `data-error="true"`. Without `onError`, each distinct error is logged to the console once outside production builds.
+
+```tsx
+import { OffscreenWebGL, type OffscreenWebGLError } from 'react-offscreen-webgl';
+
+function report(error: OffscreenWebGLError) {
+	console.error(error.kind, error.message, error.cause);
+}
+
+<OffscreenWebGL fragmentShader={shader} onError={report} />;
+```
+
+`kind` says where the error came from: `compile`, `link`, `fetch`, `callback`, `context-lost`, `worker` or `unsupported`. Compile and link errors include the browser's shader info log unchanged in the message, prefixed with the stage and, for multi-pass shaders, the zero-based group and pass. When the failure started as a thrown error, such as a failed `fetch` or an `f_` callback that throws, that original error is kept as `cause`.
+
+Compile, link, fetch and unsupported errors during setup stop the component from rendering; `data-ready` stays `false` and `onReady` is not called. A callback that throws on every frame is reported once until it throws a different error or is replaced; the other callbacks keep running.
+
+### Context loss
+
+All components share one WebGL context, so a GPU reset or driver failure affects every canvas. When the context is lost, each component receives a `context-lost` error, keeps its last frame on screen and stops rendering; worker callbacks pause. Uniform and size changes made while the context is lost, and components mounted during the loss, are applied once it is restored. When the browser restores the context, the worker recompiles every shader, rebuilds buffers and framebuffers, reapplies uniforms and repaints. The component then clears the `context-lost` error and calls `onReady` again.
+
+</section>
+
+<section id="limitations">
+<div className="section-number">09</div>
 
 ## Limitations
 
 - The component is browser-only. In an SSR framework, load it on the client (for example, a dynamic import with SSR disabled).
 - Worker callbacks share WebGL state; restore state you change so other components are unaffected.
+- After a WebGL context restore, GL objects that worker callbacks created themselves are invalid and must be recreated.
 - Media and camera textures are not yet supported.
 - The worker ships inside the package and starts from a `blob:` URL. With a Content Security Policy, allow `worker-src blob:`.
 - The library requires the browser features listed below. The example needs WebGL enabled to render.
@@ -249,7 +279,7 @@ Pass nested arrays to `fragmentShader` or `fragmentShaderURL` to configure shade
 </section>
 
 <section id="versions">
-<div className="section-number">09</div>
+<div className="section-number">10</div>
 
 ## Versions and releases
 

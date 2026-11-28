@@ -1,4 +1,5 @@
 import { uuidv4 } from '../utils/uuid';
+import { OffscreenWebGLError } from './errors';
 import { RunOnWorkerContextFn, WebGLManager } from './gl-manager';
 import { WorkerMessageType, WorkerMessages } from './worker-messages';
 import WebWorker from './webgl.worker?worker&inline';
@@ -14,7 +15,8 @@ export type WebGLManagerProxyType = WebGLManagerProxyClass & MappedManagerFuncti
 
 class WebGLManagerProxyClass {
 	private static worker: Worker | null = null;
-	private static workerFailure: Error | null = null;
+	private static workerFailure: OffscreenWebGLError | null = null;
+	private static instances = new Map<string, WebGLManagerProxyClass>();
 	private static canvasIds = new WeakMap<HTMLCanvasElement, string>();
 	private static releasedCanvases = new FinalizationRegistry<string>((canvasId) => {
 		WebGLManagerProxyClass.worker?.postMessage({ type: WorkerMessageType.RELEASE, canvasId } satisfies WorkerMessages);
@@ -22,6 +24,8 @@ class WebGLManagerProxyClass {
 	private static queuedMessages: WorkerMessages[] = [];
 	private static pendingResponses: Record<string, { resolve: (value: any) => void; reject: (error: Error) => void }> = {};
 	private readonly PROXY_ID = `WebGLManagerProxy-${uuidv4()}`;
+	public onError: ((error: OffscreenWebGLError) => void) | null = null;
+	public onContextRestored: (() => void) | null = null;
 
 	private static readonly _managerPrototype = Object.getOwnPropertyNames(WebGLManager.prototype).reduce(
 		(acc, prop) => {
@@ -36,13 +40,15 @@ class WebGLManagerProxyClass {
 
 	public static prewarm(): Worker {
 		if (WebGLManagerProxyClass.worker) return WebGLManagerProxyClass.worker;
+		if (typeof Worker === 'undefined') throw new OffscreenWebGLError('unsupported', 'Web Workers are not supported');
 		const worker = new WebWorker();
 		worker.onmessage = WebGLManagerProxyClass.handleMessage;
 		worker.onerror = (event) => {
-			const error = new Error(event.message || 'WebGL worker failed');
+			const error = new OffscreenWebGLError('worker', event.message || 'WebGL worker failed', event.error);
 			WebGLManagerProxyClass.workerFailure = error;
 			for (const pending of Object.values(WebGLManagerProxyClass.pendingResponses)) pending.reject(error);
 			WebGLManagerProxyClass.pendingResponses = {};
+			WebGLManagerProxyClass.instances.forEach((instance) => instance.reportError(error));
 		};
 		WebGLManagerProxyClass.worker = worker;
 		return worker;
@@ -54,12 +60,15 @@ class WebGLManagerProxyClass {
 		let canvasId = WebGLManagerProxyClass.canvasIds.get(canvas);
 		let output: OffscreenCanvas | undefined;
 		if (!canvasId) {
-			if (typeof canvas.transferControlToOffscreen !== 'function') throw new Error('OffscreenCanvas is not supported');
+			if (typeof canvas.transferControlToOffscreen !== 'function') {
+				throw new OffscreenWebGLError('unsupported', 'OffscreenCanvas is not supported');
+			}
 			output = canvas.transferControlToOffscreen();
 			canvasId = `OffscreenWebGLOutput-${uuidv4()}`;
 			WebGLManagerProxyClass.canvasIds.set(canvas, canvasId);
 			WebGLManagerProxyClass.releasedCanvases.register(canvas, canvasId);
 		}
+		WebGLManagerProxyClass.instances.set(this.PROXY_ID, this);
 		WebGLManagerProxyClass.flush();
 		worker.postMessage(
 			{
@@ -101,24 +110,34 @@ class WebGLManagerProxyClass {
 	private static handleMessage(event: MessageEvent<WorkerMessages>) {
 		const { data } = event;
 		if (data.type === WorkerMessageType.RESPONSE) {
-			const { id, result, error } = data;
+			const { id, result } = data;
 			if (WebGLManagerProxyClass.pendingResponses[id]) {
-				error
-					? WebGLManagerProxyClass.pendingResponses[id].reject(new Error(error))
-					: WebGLManagerProxyClass.pendingResponses[id].resolve(result);
+				WebGLManagerProxyClass.pendingResponses[id].resolve(result);
 				delete WebGLManagerProxyClass.pendingResponses[id];
 			} else {
 				console.warn(`[WebGLManagerProxy] No pending response for ID: ${id}`, data);
 			}
 		} else if (data.type === WorkerMessageType.ERROR) {
-			const { error, id } = data;
+			const { id, proxyId } = data;
+			const error = OffscreenWebGLError.from(data.error);
 			if (id && WebGLManagerProxyClass.pendingResponses[id]) {
-				WebGLManagerProxyClass.pendingResponses[id].reject(new Error(error));
+				WebGLManagerProxyClass.pendingResponses[id].reject(error);
 				delete WebGLManagerProxyClass.pendingResponses[id];
+			} else if (proxyId) {
+				WebGLManagerProxyClass.instances.get(proxyId)?.reportError(error);
 			} else {
-				console.error(`[WebGLManagerProxy] Error received without pending response for ID: ${id}`, error);
+				console.error('[WebGLManagerProxy]', error);
 			}
+		} else if (data.type === WorkerMessageType.CONTEXT) {
+			const instance = WebGLManagerProxyClass.instances.get(data.proxyId);
+			if (!data.lost) instance?.onContextRestored?.();
+			else instance?.reportError(new OffscreenWebGLError('context-lost', 'The WebGL context was lost'));
 		}
+	}
+
+	private reportError(error: OffscreenWebGLError): void {
+		if (this.onError) this.onError(error);
+		else console.error('[WebGLManagerProxy]', error);
 	}
 
 	private static enqueue(message: WorkerMessages): void {
@@ -137,6 +156,7 @@ class WebGLManagerProxyClass {
 	}
 
 	public callMethod<ManagerMethod extends keyof WebGLManager>(method: ManagerMethod, ...args: any[]): void {
+		if (method === 'destroy') WebGLManagerProxyClass.instances.delete(this.PROXY_ID);
 		WebGLManagerProxyClass.enqueue({
 			type: WorkerMessageType.CALL_METHOD,
 			proxyId: this.PROXY_ID,
@@ -149,6 +169,7 @@ class WebGLManagerProxyClass {
 		method: ManagerMethod,
 		...args: any[]
 	): Promise<ReturnType<WebGLManager[ManagerMethod] extends (...args: any) => any ? WebGLManager[ManagerMethod] : never>> {
+		if (method === 'destroy') WebGLManagerProxyClass.instances.delete(this.PROXY_ID);
 		const id = uuidv4();
 		return this.request(id, {
 			type: WorkerMessageType.CALL_METHOD,
@@ -188,12 +209,12 @@ class WebGLManagerProxyClass {
 			WebGLManagerProxyClass.pendingResponses[id] = { resolve, reject };
 			try {
 				if (WebGLManagerProxyClass.workerFailure) throw WebGLManagerProxyClass.workerFailure;
-				if (!WebGLManagerProxyClass.worker) throw new Error('WebGL worker is unavailable');
+				if (!WebGLManagerProxyClass.worker) throw new OffscreenWebGLError('worker', 'WebGL worker is unavailable');
 				WebGLManagerProxyClass.flush();
 				WebGLManagerProxyClass.worker.postMessage(message);
 			} catch (error) {
 				delete WebGLManagerProxyClass.pendingResponses[id];
-				reject(error);
+				reject(error instanceof DOMException ? error : OffscreenWebGLError.from(error));
 			}
 		});
 	}

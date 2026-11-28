@@ -1,16 +1,27 @@
+import { OffscreenWebGLError, shaderLabel } from '../offscreen-webgl/errors';
 import { err, ok, Result } from './try-catch';
 
-export const createShaderFromSource = (gl: WebGLRenderingContext, type: number, source: string): Result<WebGLShader> => {
+export const createShaderFromSource = (
+	gl: WebGLRenderingContext,
+	type: number,
+	source: string,
+	details: { group?: number; pass?: number; url?: string } = {}
+): Result<WebGLShader, OffscreenWebGLError> => {
+	const stage = type === gl.VERTEX_SHADER ? 'vertex' : 'fragment';
 	const shader = gl.createShader(type);
-	if (!shader) return err(new Error('Failed to create shader'));
+	if (!shader) {
+		return err(
+			new OffscreenWebGLError(gl.isContextLost() ? 'context-lost' : 'compile', `Failed to create ${shaderLabel(stage, details)}`)
+		);
+	}
 
 	gl.shaderSource(shader, source);
 	gl.compileShader(shader);
 
 	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-		console.error('Error compiling shader:', gl.getShaderInfoLog(shader));
+		const log = gl.getShaderInfoLog(shader) || '';
 		gl.deleteShader(shader);
-		return err(new Error('Shader compilation failed'));
+		return err(new OffscreenWebGLError('compile', `${shaderLabel(stage, details)} failed to compile:\n${log.trim()}`));
 	}
 
 	return ok(shader);
