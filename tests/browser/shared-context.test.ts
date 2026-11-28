@@ -9,6 +9,25 @@ const red = 'precision mediump float; void main() { gl_FragColor = vec4(1., 0., 
 const blueFromRed = `precision mediump float;
 uniform sampler2D u_buffer0;
 void main() { gl_FragColor = vec4(0., 0., texture2D(u_buffer0, vec2(.5)).r, 1.); }`;
+const green = 'precision mediump float; void main() { gl_FragColor = vec4(0., 1., 0., 1.); }';
+const tinted = `precision mediump float;
+uniform vec2 u_resolution;
+uniform float u_blue;
+void main() { gl_FragColor = vec4(gl_FragCoord.xy / u_resolution, u_blue, 1.0); }`;
+
+async function create(fragmentShader: string, width: number, height: number) {
+	const canvas = document.createElement('canvas');
+	const proxy = new WebGLManagerProxy(canvas);
+	await proxy.setVertexShaderAsync(DEFAULT_VS_SHADER);
+	await proxy.setFragmentShadersAsync([fragmentShader]);
+	await proxy.setupWholeScreenQuadAsync();
+	await proxy.updateUniformsAsync({ u_resolution: [width, height], u_blue: 0 });
+	await proxy.resizeAsync(width, height);
+	return { canvas, proxy };
+}
+
+const sharedSize = (proxy: InstanceType<typeof WebGLManagerProxy>) =>
+	proxy.runOnContextAsync('size', (manager) => [manager.getGLContext().canvas.width, manager.getGLContext().canvas.height]);
 
 function pixel(canvas: HTMLCanvasElement, x: number, y: number): number[] {
 	const copy = document.createElement('canvas');
@@ -93,6 +112,78 @@ describe('shared worker context', () => {
 			});
 		} finally {
 			await Promise.all(proxies.map((proxy) => proxy.destroyAsync()));
+		}
+	});
+
+	it('clears only the painted region and restores scissor state', async () => {
+		const big = await create(red, 32, 32);
+		const small = await create(green, 4, 4);
+		try {
+			await big.proxy.runOnContextAsync('save', (manager) => {
+				(globalThis as any).bigManager = manager;
+			});
+			const result = await small.proxy.runOnContextAsync('probe', (manager) => {
+				const gl = manager.getGLContext();
+				const read = (x: number, y: number) => {
+					const data = new Uint8Array(4);
+					gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, data);
+					return Array.from(data);
+				};
+				(globalThis as any).bigManager.paintCanvas();
+				gl.enable(gl.SCISSOR_TEST);
+				gl.scissor(0, 0, 4, 4);
+				gl.clear(gl.COLOR_BUFFER_BIT);
+				gl.scissor(1, 2, 3, 4);
+				manager.paintCanvas();
+				const state = { enabled: gl.isEnabled(gl.SCISSOR_TEST), box: Array.from(gl.getParameter(gl.SCISSOR_BOX)) };
+				gl.disable(gl.SCISSOR_TEST);
+				manager.paintCanvas();
+				return {
+					...state,
+					disabled: !gl.isEnabled(gl.SCISSOR_TEST),
+					inside: read(0, 0),
+					outside: [read(4, 0), read(0, 4), read(31, 31)],
+				};
+			});
+			expect(result).toEqual({
+				enabled: true,
+				box: [1, 2, 3, 4],
+				disabled: true,
+				inside: [0, 255, 0, 255],
+				outside: [
+					[255, 0, 0, 255],
+					[255, 0, 0, 255],
+					[255, 0, 0, 255],
+				],
+			});
+			await vi.waitFor(() => {
+				expect(pixel(big.canvas, 16, 16)).toEqual([255, 0, 0, 255]);
+				expect(pixel(small.canvas, 3, 3)).toEqual([0, 255, 0, 255]);
+			});
+		} finally {
+			await Promise.all([big.proxy.destroyAsync(), small.proxy.destroyAsync()]);
+		}
+	});
+
+	it('shrinks the shared canvas after the largest component goes away', async () => {
+		const big = await create(red, 64, 64);
+		const small = await create(tinted, 4, 4);
+		let bigDestroyed = false;
+		try {
+			await expect(sharedSize(small.proxy)).resolves.toEqual([64, 64]);
+			await big.proxy.resizeAsync(50, 50);
+			await expect(sharedSize(small.proxy)).resolves.toEqual([64, 64]);
+			await big.proxy.destroyAsync();
+			bigDestroyed = true;
+			await expect(sharedSize(small.proxy)).resolves.toEqual([4, 4]);
+			small.proxy.updateUniform('u_blue', 1);
+			await small.proxy.paintCanvasAsync();
+			await vi.waitFor(() => {
+				expect(pixel(small.canvas, 0, 3)).toEqual([32, 32, 255, 255]);
+				expect(pixel(small.canvas, 3, 0)).toEqual([223, 223, 255, 255]);
+			});
+		} finally {
+			await Promise.all([small.proxy.destroyAsync(), bigDestroyed ? null : big.proxy.destroyAsync()]);
 		}
 	});
 });

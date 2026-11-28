@@ -9,6 +9,15 @@ import { OffscreenWebGLError, ShaderStage } from './errors';
 declare const process: { env: Record<string, string | undefined> };
 
 const STREAM_ATTACH_TIMEOUT_MS = 1000;
+const VISIBILITY_MARGIN = '100px';
+
+interface PauseState {
+	offscreen: boolean;
+	hidden: boolean;
+	skipped: boolean;
+	sent: boolean;
+	scheduled: boolean;
+}
 
 function isProduction(): boolean {
 	try {
@@ -38,6 +47,7 @@ interface UseOffscreenWebGLOptions {
 	functions?: Record<string, RunOnWorkerContextFn>;
 	onError?: (error: OffscreenWebGLError) => void;
 	onReady?: () => void;
+	pauseWhenHidden?: boolean;
 }
 
 interface UseOffscreenWebGLState {
@@ -57,6 +67,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		uniforms = {},
 		uniformStream,
 		functions = {},
+		pauseWhenHidden = true,
 	} = options;
 
 	useState(() => {
@@ -75,6 +86,9 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 	});
 
 	const proxyRef = useRef<WebGLManagerProxyType | null>(null);
+	const sessionRef = useRef<{ canvas: HTMLCanvasElement; cancelled: boolean; release?: ReturnType<typeof setTimeout> } | null>(null);
+	const pauseRef = useRef<PauseState>({ offscreen: false, hidden: false, skipped: false, sent: false, scheduled: false });
+	const resumeListenersRef = useRef(new Set<() => void>());
 	const observerRef = useRef<ResizeObserver | null>(null);
 	const sizeRef = useRef<[number, number]>([0, 0]);
 	const sentUniformsRef = useRef<Record<WebGLUniformName, number | number[]>>({});
@@ -115,13 +129,53 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		if (readyRef.current) onReadyRef.current?.();
 	}, []);
 
+	const syncPause = useCallback(() => {
+		const pause = pauseRef.current;
+		if (pause.scheduled) return;
+		pause.scheduled = true;
+		queueMicrotask(() => {
+			pause.scheduled = false;
+			const proxy = proxyRef.current;
+			const paused = pause.offscreen || pause.hidden || pause.skipped;
+			if (!proxy || paused === pause.sent) return;
+			pause.sent = paused;
+			if (!paused) resumeListenersRef.current.forEach((listener) => listener());
+			proxy.setPaused(paused);
+		});
+	}, []);
+
+	const destroySession = useCallback(() => {
+		const session = sessionRef.current;
+		if (session) {
+			session.cancelled = true;
+			clearTimeout(session.release);
+		}
+		sessionRef.current = null;
+		readyRef.current = false;
+		proxyRef.current?.destroy();
+		proxyRef.current = null;
+	}, []);
+
 	// Initialize WebGL
 	useEffect(() => {
-		if (!canvas || proxyRef.current) return;
+		if (!canvas) return;
+		const release = () => {
+			const session = sessionRef.current;
+			if (!session || !canvas.isConnected) return destroySession();
+			session.release = setTimeout(destroySession);
+		};
+		const previous = sessionRef.current;
+		if (previous?.canvas === canvas) {
+			clearTimeout(previous.release);
+			return release;
+		}
+		if (previous) destroySession();
 
-		setState((prev) => ({ ...prev, isLoading: true, hasError: false, error: null }));
+		setState((prev) => ({ ...prev, isLoading: true, isReady: false, hasError: false, error: null, proxy: null }));
 
-		let cancelled = false;
+		const session = { canvas, cancelled: false };
+		sessionRef.current = session;
+		pauseRef.current.sent = false;
 		const initializeWebGL = async () => {
 			try {
 				let size: [number, number] = [canvas.width, canvas.height];
@@ -138,10 +192,10 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				const proxy = new WebGLManagerProxy(canvas) as any as WebGLManagerProxyType;
 				proxyRef.current = proxy;
 				proxy.onError = (error) => {
-					if (!cancelled) reportError(error, false);
+					if (!session.cancelled) reportError(error, false);
 				};
 				proxy.onContextRestored = () => {
-					if (!cancelled) handleContextRestored();
+					if (!session.cancelled) handleContextRestored();
 				};
 
 				const steps: Promise<unknown>[] = [
@@ -175,7 +229,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 
 				steps.push(proxy.updateUniformAsync('u_resolution', size), proxy.resizeAsync(size[0], size[1]));
 				await Promise.all(steps);
-				if (cancelled) return;
+				if (session.cancelled) return;
 				setState((prev) => ({
 					...prev,
 					isLoading: false,
@@ -185,20 +239,13 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 				readyRef.current = true;
 				onReadyRef.current?.();
 			} catch (error) {
-				if (!cancelled) setError(error);
+				if (!session.cancelled) setError(error);
 			}
 		};
 
 		initializeWebGL();
 
-		return () => {
-			cancelled = true;
-			readyRef.current = false;
-			if (proxyRef.current) {
-				proxyRef.current.destroy();
-				proxyRef.current = null;
-			}
-		};
+		return release;
 	}, [canvas]);
 
 	useEffect(() => {
@@ -209,14 +256,29 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		let frameTask: FrameTask | null = null;
 		let attachTimeout: ReturnType<typeof setTimeout> | undefined;
 		let latestValues: Record<WebGLUniformName, number | number[]> = {};
+		let heldWhilePaused = false;
+		const onResume = () => {
+			if (!heldWhilePaused) return;
+			heldWhilePaused = false;
+			proxy.updateUniforms(latestValues);
+		};
+		resumeListenersRef.current.add(onResume);
 		const useMessages = () => {
 			if (!active || unsubscribe) return;
 			unsubscribe = uniformStream.subscribe((values) => {
 				latestValues = values;
+				if (pauseRef.current.sent) {
+					heldWhilePaused = true;
+					return;
+				}
 				frameTask ??= scheduleFrames(1000 / refreshRateRef.current, () => {
 					frameTask?.cancel();
 					frameTask = null;
 					if (!active) return;
+					if (pauseRef.current.sent) {
+						heldWhilePaused = true;
+						return;
+					}
 					proxy.updateUniforms(latestValues);
 					proxy.paintCanvas();
 				});
@@ -239,6 +301,7 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 		} else useMessages();
 		return () => {
 			active = false;
+			resumeListenersRef.current.delete(onResume);
 			clearTimeout(attachTimeout);
 			unsubscribe?.();
 			frameTask?.cancel();
@@ -314,6 +377,53 @@ export function useOffscreenWebGL(canvas: HTMLCanvasElement | null, options: Use
 			setError(error);
 		}
 	}, [canvas, disableResizeObserver, state.isReady]);
+
+	useEffect(() => {
+		if (!state.isReady || !canvas || !proxyRef.current) return;
+		const pause = pauseRef.current;
+		if (!pauseWhenHidden) pause.offscreen = pause.hidden = pause.skipped = false;
+		const cleanups: (() => void)[] = [];
+		if (pauseWhenHidden) {
+			const onVisibilityChange = () => {
+				pause.hidden = document.visibilityState === 'hidden';
+				syncPause();
+			};
+			onVisibilityChange();
+			document.addEventListener('visibilitychange', onVisibilityChange);
+			cleanups.push(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+
+			if (typeof IntersectionObserver === 'function') {
+				const observer = new IntersectionObserver(
+					(entries) => {
+						pause.offscreen = !entries[entries.length - 1].isIntersecting;
+						syncPause();
+					},
+					{ rootMargin: VISIBILITY_MARGIN, scrollMargin: VISIBILITY_MARGIN } as IntersectionObserverInit
+				);
+				observer.observe(canvas);
+				cleanups.push(() => observer.disconnect());
+			}
+
+			if ('oncontentvisibilityautostatechange' in canvas) {
+				const skipped = new Set<EventTarget>();
+				const onContentVisibilityChange = (event: Event) => {
+					const target = event.target as Node;
+					if (!target.contains(canvas)) return;
+					if ((event as ContentVisibilityAutoStateChangeEvent).skipped) skipped.add(target);
+					else skipped.delete(target);
+					pause.skipped = skipped.size > 0;
+					syncPause();
+				};
+				document.addEventListener('contentvisibilityautostatechange', onContentVisibilityChange, true);
+				cleanups.push(() => document.removeEventListener('contentvisibilityautostatechange', onContentVisibilityChange, true));
+			}
+		}
+		syncPause();
+
+		return () => {
+			cleanups.forEach((cleanup) => cleanup());
+		};
+	}, [canvas, pauseWhenHidden, state.isReady]);
 
 	return state;
 }

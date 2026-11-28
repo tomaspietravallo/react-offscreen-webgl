@@ -15,6 +15,7 @@ interface OffscreenWebGLProps<V, F, VURL, FURL> {
 	uniformStream?: UniformStream;
 	onError?: (error: OffscreenWebGLError) => void;
 	onReady?: () => void;
+	pauseWhenHidden?: boolean;
 
 	[key: RunOnWorkerContextFnName]: RunOnWorkerContextFn<any>;
 }
@@ -45,6 +46,7 @@ export function OffscreenWebGL<
 		uniformStream,
 		onError,
 		onReady,
+		pauseWhenHidden,
 		...rest
 	} = props;
 
@@ -80,6 +82,7 @@ export function OffscreenWebGL<
 		functions,
 		onError,
 		onReady,
+		pauseWhenHidden,
 	});
 
 	return (

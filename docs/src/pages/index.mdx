@@ -112,12 +112,20 @@ You can also load a shader with `fragmentShaderURL`. URL paths beginning with `/
 | `refreshRate`           | `number`                               | Render loop frequency in frames per second; default `30`.                  |
 | `disableResizeObserver` | `boolean`                              | Default `false`; disables automatic canvas resizing.                       |
 | `uniformStream`         | `UniformStream`                        | Numeric uniforms updated outside React; uses shared memory when available. |
+| `pauseWhenHidden`       | `boolean`                              | Default `true`; pauses rendering while the canvas cannot be seen.          |
 | `onError`               | `(error: OffscreenWebGLError) => void` | Called with each failure; see [Errors](#errors).                           |
 | `onReady`               | `() => void`                           | Called when the first frame is painted and after a WebGL context restore.  |
 | `u_<name>`              | `number \| number[]`                   | Float or float vector uniform.                                             |
 | `f_<name>`              | function                               | Run a callback in the worker; names containing `each` run every frame.     |
 
 </div>
+
+### Pausing hidden components
+
+By default, a component stops its frame loop, `f_each` callbacks and repaints while its canvas cannot be seen: when it is outside the viewport or a scroll container (resuming about 100px before it scrolls back in), when the document is hidden, or when `content-visibility: auto` skips it. Uniform props and stream values that change while paused are applied when the component resumes, and it repaints immediately with the current uniforms. Set `pauseWhenHidden={false}` to keep rendering, for example when a callback must keep running in the background.
+
+StrictMode's development remount reuses the same worker state instead of compiling the shaders twice.
+
 </section>
 
 <section id="uniforms">
@@ -207,7 +215,7 @@ A stream can drive multiple canvases. Replacing or removing `uniformStream` disc
 
 ## Worker callbacks
 
-Callbacks receive the manager, frame count, and elapsed time in milliseconds. Call `paintCanvas()` to render a frame. The live example updates a time uniform this way.
+Callbacks receive the manager, frame count, and elapsed time in milliseconds. Call `paintCanvas()` to render a frame. The live example updates a time uniform this way. While a component is paused, `f_each` callbacks do not run, `paintCanvas()` does nothing, the frame count does not advance, and elapsed time excludes the paused period, so animations continue where they stopped instead of jumping ahead.
 
 ```tsx
 <OffscreenWebGL
@@ -268,8 +276,9 @@ All components share one WebGL context, so a GPU reset or driver failure affects
 ## Limitations
 
 - The component is browser-only. In an SSR framework, load it on the client (for example, a dynamic import with SSR disabled).
-- Worker callbacks share WebGL state; restore state you change so other components are unaffected.
+- Worker callbacks share WebGL state; restore state you change so other components are unaffected. Rendering sets its own viewport and scissor box and restores the scissor state afterwards.
 - After a WebGL context restore, GL objects that worker callbacks created themselves are invalid and must be recreated.
+- The transferred canvas output is released when the canvas element is garbage collected.
 - Media and camera textures are not yet supported.
 - The worker ships inside the package and starts from a `blob:` URL. With a Content Security Policy, allow `worker-src blob:`.
 - The library requires the browser features listed below. The example needs WebGL enabled to render.

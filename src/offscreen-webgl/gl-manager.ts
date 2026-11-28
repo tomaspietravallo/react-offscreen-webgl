@@ -28,9 +28,12 @@ async function fetchShaderSource(url: string, stage: ShaderStage, details: Shade
 
 export class WebGLManager {
 	public static readonly DEFAULT_FRAME_RATE = 30;
+	private static readonly liveManagers = new WeakMap<HTMLCanvasElement, Set<WebGLManager>>();
 	private frame: number = 0;
 	private timeElapsed: number = 0;
 	private startTime: number | null = null;
+	private pausedAt: number | null = null;
+	private frameInterval: number | null = null;
 	private onEachFrameFunctions: Record<string, RunOnWorkerContextFn> = {};
 	private canvas: HTMLCanvasElement;
 	private gl: WebGLRenderingContext;
@@ -83,7 +86,7 @@ export class WebGLManager {
 			throw new OffscreenWebGLError('unsupported', 'WebGL is not supported');
 		}
 
-		return new Proxy(this, {
+		const manager = new Proxy(this, {
 			get: (target, prop, receiver) => {
 				if (prop.toString().endsWith('Async')) {
 					const originalMethod = target[prop.toString().slice(0, -5) as keyof WebGLManager] as (...args: any[]) => any;
@@ -92,6 +95,10 @@ export class WebGLManager {
 				return Reflect.get(target, prop, receiver);
 			},
 		});
+		let live = WebGLManager.liveManagers.get(canvas);
+		if (!live) WebGLManager.liveManagers.set(canvas, (live = new Set()));
+		live.add(manager);
+		return manager;
 	}
 
 	static fromHTMLCanvasElement(
@@ -111,6 +118,9 @@ export class WebGLManager {
 	public destroy(): Result<WebGLManager> {
 		this.frameTask?.cancel();
 		this.frameTask = null;
+		this.frameInterval = null;
+		WebGLManager.liveManagers.get(this.canvas)?.delete(this);
+		WebGLManager.fitCanvas(this.canvas);
 		this.readUniformStream = null;
 		this.streamNeedsPaint = false;
 		try {
@@ -306,12 +316,12 @@ export class WebGLManager {
 	}
 
 	public paintCanvas(): Result<WebGLManager> {
+		if (this.pausedAt !== null) return ok(this);
 		this.consumeUniformStream();
 		this.streamNeedsPaint = false;
 		if (this.isLost()) return ok(this);
 		if (this.shaderPrograms && this.fragmentShaderGroups) {
-			if (this.canvas.width < this.width) this.canvas.width = this.width;
-			if (this.canvas.height < this.height) this.canvas.height = this.height;
+			if (this.canvas.width < this.width || this.canvas.height < this.height) WebGLManager.fitCanvas(this.canvas);
 			const result = this.renderWithFragmentShaderGroups();
 			if (!result.error) this.onPaint?.(this.width, this.height);
 			return result;
@@ -349,7 +359,23 @@ export class WebGLManager {
 
 		// Expect framebuffers to be initialized for subgroups groups >= 2
 		let [ping, pong] = this.framebuffers || [];
+		const scissorEnabled = this.gl.isEnabled(this.gl.SCISSOR_TEST);
+		const scissorBox: Int32Array = this.gl.getParameter(this.gl.SCISSOR_BOX);
+		this.gl.enable(this.gl.SCISSOR_TEST);
+		this.gl.scissor(0, 0, this.width, this.height);
 
+		try {
+			this.renderPasses(ping, pong);
+		} finally {
+			if (!scissorEnabled) this.gl.disable(this.gl.SCISSOR_TEST);
+			this.gl.scissor(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
+		}
+
+		return ok(this);
+	}
+
+	private renderPasses(ping: FrameBufferObject | undefined, pong: FrameBufferObject | undefined): void {
+		if (!this.fragmentShaderGroups || !this.shaderPrograms) return;
 		for (let groupIndex = 0; groupIndex < this.fragmentShaderGroups.length; groupIndex++) {
 			const group = this.fragmentShaderGroups[groupIndex];
 			const programGroup = this.shaderPrograms[groupIndex];
@@ -372,7 +398,6 @@ export class WebGLManager {
 				}
 
 				this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, targetFramebuffer);
-				this.gl.disable(this.gl.SCISSOR_TEST);
 				this.gl.viewport(0, 0, this.width, this.height);
 				this.gl.clear(this.gl.COLOR_BUFFER_BIT);
 
@@ -397,13 +422,29 @@ export class WebGLManager {
 				[ping, pong] = [pong, ping];
 			}
 		}
+	}
 
-		return ok(this);
+	private static fitCanvas(canvas: HTMLCanvasElement): void {
+		let width = 1;
+		let height = 1;
+		WebGLManager.liveManagers.get(canvas)?.forEach((manager) => {
+			if (!manager.shaderPrograms) return;
+			width = Math.max(width, manager.width);
+			height = Math.max(height, manager.height);
+		});
+		if (canvas.width * canvas.height > 2 * width * height) {
+			canvas.width = width;
+			canvas.height = height;
+		} else if (canvas.width < width || canvas.height < height) {
+			canvas.width = Math.max(canvas.width, width);
+			canvas.height = Math.max(canvas.height, height);
+		}
 	}
 
 	public resize(width: number, height: number): Result<WebGLManager> {
 		this.width = width;
 		this.height = height;
+		WebGLManager.fitCanvas(this.canvas);
 		if (this.usesPingPongGroups && !this.isLost()) {
 			const result = this.setupPingPongBuffers(width, height);
 			if (result.error) return result;
@@ -532,12 +573,28 @@ export class WebGLManager {
 		if (frameRate <= 0) {
 			return err(new Error('[OffscreenCanvas @ GLManager] Frame rate must be greater than 0'));
 		}
-		const interval = 1000 / frameRate;
-		if (this.frameTask) {
-			this.frameTask.interval = interval;
+		this.frameInterval = 1000 / frameRate;
+		if (this.frameTask) this.frameTask.interval = this.frameInterval;
+		else if (this.pausedAt === null) this.startFrameTask();
+		return ok(this);
+	}
+
+	public setPaused(paused: boolean): Result<WebGLManager> {
+		if (paused === (this.pausedAt !== null)) return ok(this);
+		if (paused) {
+			this.pausedAt = performance.now();
+			this.frameTask?.cancel();
+			this.frameTask = null;
 			return ok(this);
 		}
-		this.frameTask = scheduleFrames(interval, (now) => {
+		if (this.startTime !== null) this.startTime += performance.now() - this.pausedAt!;
+		this.pausedAt = null;
+		if (this.frameInterval !== null) this.startFrameTask();
+		return this.paintCanvas();
+	}
+
+	private startFrameTask(): void {
+		this.frameTask = scheduleFrames(this.frameInterval!, (now) => {
 			this.startTime ??= now;
 			if (this.isLost()) return;
 			this.frame++;
@@ -552,7 +609,6 @@ export class WebGLManager {
 				this.reportOnce('paint', OffscreenWebGLError.from(error));
 			}
 		});
-		return ok(this);
 	}
 
 	private runFrameCallback(key: string, fn: RunOnWorkerContextFn): void {
